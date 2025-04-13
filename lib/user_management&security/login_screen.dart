@@ -1,7 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:mobile_app_assignment/main.dart';
-import 'package:mobile_app_assignment/user_management&security/forgot_password_screen.dart';
-import 'package:mobile_app_assignment/user_management&security/sign_up_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   final Function(bool) onThemeChanged;
@@ -15,79 +12,187 @@ class LoginScreen extends StatefulWidget {
 class LoginScreenState extends State<LoginScreen> {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
-  final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
+  bool _isPasswordVisible = false;
+  bool _rememberMe = false;
 
-  void _login() {
-    if (_formKey.currentState!.validate()) {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => HomeScreen(onThemeChanged: widget.onThemeChanged)),
-      );
-    }
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Login")),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Form(
-          key: _formKey,
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: EdgeInsets.all(24.0),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Text("Welcome Back!", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 20),
-              TextFormField(
-                controller: _emailController,
-                keyboardType: TextInputType.emailAddress,
-                decoration: const InputDecoration(labelText: "Email", border: OutlineInputBorder()),
-                validator: (value) => value!.isEmpty ? "Please enter your email" : null,
-              ),
-              const SizedBox(height: 10),
-              TextFormField(
-                controller: _passwordController,
-                obscureText: true,
-                decoration: const InputDecoration(labelText: "Password", border: OutlineInputBorder()),
-                validator: (value) => value!.isEmpty ? "Please enter your password" : null,
-              ),
-              const SizedBox(height: 10),
-              Align(
-                alignment: Alignment.centerRight,
-                child: TextButton(
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (context) => const ForgotPasswordScreen()),
-                    );
-                  },
-                  child: const Text("Forgot Password?"),
-                ),
-              ),
-              const SizedBox(height: 20),
-              Center(
-                child: ElevatedButton(
-                  onPressed: _login,
-                  child: const Text("Login"),
-                ),
-              ),
-              const SizedBox(height: 20),
-              Center(
-                child: TextButton(
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (context) => SignUpScreen(onThemeChanged: widget.onThemeChanged)),
-                    );
-                  },
-                  child: const Text("Don't have an account? Sign Up"),
-                ),
-              ),
+              SizedBox(height: 40),
+              _buildHeader(),
+              SizedBox(height: 40),
+              _buildLoginForm(),
+              SizedBox(height: 20),
+              _buildLoginButton(),
+              SizedBox(height: 16),
+              _buildForgotPassword(),
+              SizedBox(height: 40),
+              _buildSignUpSection(),
             ],
           ),
         ),
       ),
     );
+  }
+
+  Widget _buildHeader() {
+    return Column(
+      children: [
+        Icon(
+          Icons.account_balance_wallet,
+          size: 64,
+          color: Theme.of(context).primaryColor,
+        ),
+        SizedBox(height: 16),
+        Text(
+          'Clarity Finance',
+          style: TextStyle(
+            fontSize: 28,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        SizedBox(height: 8),
+        Text(
+          'Your personal finance manager',
+          style: TextStyle(
+            fontSize: 16,
+            color: Colors.grey[600],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildLoginForm() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Login',
+          style: TextStyle(
+            fontSize: 24,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        SizedBox(height: 20),
+        TextField(
+          controller: _emailController,
+          decoration: InputDecoration(
+            labelText: 'Email',
+            prefixIcon: Icon(Icons.email),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+          keyboardType: TextInputType.emailAddress,
+        ),
+        SizedBox(height: 16),
+        TextField(
+          controller: _passwordController,
+          decoration: InputDecoration(
+            labelText: 'Password',
+            prefixIcon: Icon(Icons.lock),
+            suffixIcon: IconButton(
+              icon: Icon(
+                _isPasswordVisible 
+                    ? Icons.visibility_off 
+                    : Icons.visibility,
+              ),
+              onPressed: () {
+                setState(() {
+                  _isPasswordVisible = !_isPasswordVisible;
+                });
+              },
+            ),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+          obscureText: !_isPasswordVisible,
+        ),
+        SizedBox(height: 8),
+        Row(
+          children: [
+            Checkbox(
+              value: _rememberMe,
+              onChanged: (value) {
+                setState(() {
+                  _rememberMe = value ?? false;
+                });
+              },
+            ),
+            Text('Remember me'),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildLoginButton() {
+    return ElevatedButton(
+      onPressed: _handleLogin,
+      style: ElevatedButton.styleFrom(
+        padding: EdgeInsets.symmetric(vertical: 16),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+      ),
+      child: Text(
+        'Login',
+        style: TextStyle(
+          fontSize: 16,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildForgotPassword() {
+    return TextButton(
+      onPressed: () {
+        Navigator.pushNamed(context, '/forgot_password');
+      },
+      child: Text('Forgot Password?'),
+    );
+  }
+
+  Widget _buildSignUpSection() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Text("Don't have an account?"),
+        TextButton(
+          onPressed: () {
+            Navigator.pushNamed(context, '/signup');
+          },
+          child: Text('Sign Up'),
+        ),
+      ],
+    );
+  }
+
+  void _handleLogin() {
+    // Implement login logic here
+    // For demonstration, we'll just navigate to the home screen
+    if (_emailController.text.isNotEmpty && _passwordController.text.isNotEmpty) {
+      Navigator.pushReplacementNamed(context, '/');
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Please enter email and password')),
+      );
+    }
   }
 }

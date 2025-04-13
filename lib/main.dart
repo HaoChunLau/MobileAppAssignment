@@ -18,7 +18,7 @@ import 'package:mobile_app_assignment/reports&analytics/reports_overview_screen.
 import 'package:mobile_app_assignment/user_management&security/change_password_screen.dart';
 import 'package:mobile_app_assignment/user_management&security/forgot_password_screen.dart';
 import 'package:mobile_app_assignment/user_management&security/login_screen.dart';
-import 'package:mobile_app_assignment/user_management&security/profile_management_screen';
+import 'package:mobile_app_assignment/user_management&security/profile_management_screen.dart';
 import 'package:mobile_app_assignment/user_management&security/setting_screen.dart';
 import 'package:mobile_app_assignment/user_management&security/sign_up_screen.dart';
 

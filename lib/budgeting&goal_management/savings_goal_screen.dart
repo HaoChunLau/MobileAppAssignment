@@ -3,7 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 
 class SavingsGoalScreen extends StatefulWidget {
-  const SavingsGoalScreen({Key? key}) : super(key: key);
+  const SavingsGoalScreen({super.key});
 
   @override
   State<SavingsGoalScreen> createState() => _SavingsGoalScreenState();
@@ -41,17 +41,98 @@ class _SavingsGoalScreenState extends State<SavingsGoalScreen> {
     ),
   ];
 
+  // ========= Popup Windows for more action ========
+  void _handleMenuSelection(String value) {
+    switch (value) {
+      case 'settings':
+        Navigator.pushNamed(context, '/settings');
+        break;
+      case 'search':
+        setState(() {
+          /*_isSearchVisible = !_isSearchVisible;
+          if (!_isSearchVisible) {
+            _searchController.clear();
+            _searchTerm = '';
+          }*/
+        });
+        break;
+      case 'sort':
+        //_showSortDialog(context);
+        break;
+      case 'filter':
+        //filterPopup();
+        break;
+      case 'history':
+        _navigateToSavingsGoalHistoryScreen();
+        break;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Savings Goals'),
+        actions: [
+          PopupMenuButton<String>(
+            icon: Icon(Icons.more_vert),
+            onSelected: (String value) {
+              _handleMenuSelection(value);
+            },
+            itemBuilder: (BuildContext context) =>
+            [
+              PopupMenuItem<String>(
+                value: 'settings',
+                child: ListTile(
+                  leading: Icon(Icons.settings, size: 20),
+                  title: Text('Settings'),
+                  dense: true,
+                ),
+              ),
+              PopupMenuItem<String>(
+                  value: 'search',
+                  child: ListTile(
+                    leading: Icon(
+                      /*_isSearchVisible ? Icons.search_off : */Icons.search,
+                      size: 20,
+                    ),
+                    title: Text(/*_isSearchVisible ? 'Cancel Searching' : */'Search'),
+                    dense: true,
+                  )
+              ),
+              PopupMenuItem<String>(
+                  value: 'sort',
+                  child: ListTile(
+                    leading: Icon(Icons.sort, size: 20),
+                    title: Text('Sort by'),
+                    dense: true,
+                  )
+              ),
+              PopupMenuItem<String>(
+                  value: 'filter',
+                  child: ListTile(
+                    leading: Icon(Icons.filter_alt_rounded, size: 20),
+                    title: Text('Filter'),
+                    dense: true,
+                  )
+              ),
+              PopupMenuItem<String>(
+                  value: 'history',
+                  child: ListTile(
+                    leading: Icon(Icons.history, size: 20),
+                    title: Text('View History'),
+                    dense: true,
+                  )
+              ),
+            ],
+          ),
+        ],
       ),
       body: _goals.isEmpty
           ? _buildEmptyState()
           : _buildGoalsList(),
       floatingActionButton: FloatingActionButton(
-        onPressed: _showAddGoalDialog,
+        onPressed: _navigateToAddGoalScreen,
         child: const Icon(Icons.add),
       ),
     );
@@ -86,7 +167,7 @@ class _SavingsGoalScreenState extends State<SavingsGoalScreen> {
           ),
           const SizedBox(height: 24),
           ElevatedButton.icon(
-            onPressed: _showAddGoalDialog,
+            onPressed: _navigateToAddGoalScreen,
             icon: const Icon(Icons.add),
             label: const Text('Add New Goal'),
           ),
@@ -130,7 +211,7 @@ class _SavingsGoalScreenState extends State<SavingsGoalScreen> {
                       Container(
                         padding: const EdgeInsets.all(10),
                         decoration: BoxDecoration(
-                          color: goal.color.withOpacity(0.1),
+                          color: goal.color.withAlpha((0.1 * 255).round()),
                           borderRadius: BorderRadius.circular(10),
                         ),
                         child: Icon(
@@ -254,16 +335,24 @@ class _SavingsGoalScreenState extends State<SavingsGoalScreen> {
     );
   }
 
-  void _showAddGoalDialog() {
+  void _navigateToAddGoalScreen(){
+    Navigator.pushNamed(context, '/savings_add');
+  }
+
+  void _navigateToSavingsGoalHistoryScreen(){
+    Navigator.pushNamed(context, '/savings_history');
+  }
+
+  /*void _showAddGoalDialog() {
     final TextEditingController nameController = TextEditingController();
     final TextEditingController amountController = TextEditingController();
     final ValueNotifier<DateTime> targetDate = ValueNotifier(
       DateTime.now().add(const Duration(days: 180))
     );
-    
+
     IconData selectedIcon = Icons.savings;
     Color selectedColor = Colors.blue;
-    
+
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
@@ -273,13 +362,13 @@ class _SavingsGoalScreenState extends State<SavingsGoalScreen> {
             Icons.beach_access, Icons.devices, Icons.flight, Icons.favorite,
             Icons.sports, Icons.shopping_bag, Icons.pets, Icons.watch,
           ];
-          
+
           final colors = [
             Colors.blue, Colors.red, Colors.green, Colors.orange,
             Colors.purple, Colors.teal, Colors.amber, Colors.indigo,
             Colors.pink, Colors.cyan
           ];
-          
+
           return AlertDialog(
             title: const Text('Add New Savings Goal'),
             content: SingleChildScrollView(
@@ -362,20 +451,20 @@ class _SavingsGoalScreenState extends State<SavingsGoalScreen> {
                           },
                           child: Container(
                             decoration: BoxDecoration(
-                              color: selectedIcon == icons[index] 
-                                  ? selectedColor.withOpacity(0.1) 
+                              color: selectedIcon == icons[index]
+                                  ? selectedColor.withAlpha((0.1 * 255).round())
                                   : Colors.transparent,
                               border: Border.all(
-                                color: selectedIcon == icons[index] 
-                                    ? selectedColor 
+                                color: selectedIcon == icons[index]
+                                    ? selectedColor
                                     : Colors.grey.shade300,
                               ),
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: Icon(
                               icons[index],
-                              color: selectedIcon == icons[index] 
-                                  ? selectedColor 
+                              color: selectedIcon == icons[index]
+                                  ? selectedColor
                                   : Colors.grey,
                             ),
                           ),
@@ -414,15 +503,15 @@ class _SavingsGoalScreenState extends State<SavingsGoalScreen> {
                               color: colors[index],
                               shape: BoxShape.circle,
                               border: Border.all(
-                                color: selectedColor == colors[index] 
-                                    ? Colors.white 
+                                color: selectedColor == colors[index]
+                                    ? Colors.white
                                     : Colors.transparent,
                                 width: 2,
                               ),
                               boxShadow: selectedColor == colors[index]
                                   ? [
                                       BoxShadow(
-                                        color: Colors.grey.withOpacity(0.5),
+                                        color: Colors.grey.withAlpha((0.5 * 255).round()),
                                         spreadRadius: 1,
                                         blurRadius: 2,
                                       ),
@@ -469,7 +558,7 @@ class _SavingsGoalScreenState extends State<SavingsGoalScreen> {
         },
       ),
     );
-  }
+  }*/
 
   void _showAddContributionDialog(SavingsGoal goal) {
     final TextEditingController amountController = TextEditingController();

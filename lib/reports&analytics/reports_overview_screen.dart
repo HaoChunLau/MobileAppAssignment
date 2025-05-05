@@ -1,13 +1,21 @@
 import 'package:flutter/material.dart';
 
-class ReportsOverviewScreen extends StatelessWidget {
+class ReportsOverviewScreen extends StatefulWidget {
   const ReportsOverviewScreen({super.key});
+
+  @override
+  State<ReportsOverviewScreen> createState() => _ReportsOverviewScreenState();
+}
+
+class _ReportsOverviewScreenState extends State<ReportsOverviewScreen>{
+  int _currentIndex = 3;
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: Text('Reports & Analytics'),
+        automaticallyImplyLeading: false,
       ),
       body: SingleChildScrollView(
         padding: EdgeInsets.all(16.0),
@@ -20,6 +28,7 @@ class ReportsOverviewScreen extends StatelessWidget {
           ],
         ),
       ),
+      bottomNavigationBar: _buildBottomNavigationBar(),
     );
   }
 
@@ -132,24 +141,10 @@ class ReportsOverviewScreen extends StatelessWidget {
             ),
             _buildReportCard(
               context,
-              'Custom Filters',
-              Icons.filter_alt,
-              Colors.blue,
-              '/filter',
-            ),
-            _buildReportCard(
-              context,
               'Export Reports',
               Icons.download,
               Colors.teal,
               '/export',
-            ),
-            _buildReportCard(
-              context,
-              'Budget Analysis',
-              Icons.pie_chart,
-              Colors.amber,
-              '/budget_overview',
             ),
           ],
         ),
@@ -197,5 +192,41 @@ class ReportsOverviewScreen extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  // ========== Bottom Navigation ==========
+  BottomNavigationBar _buildBottomNavigationBar() {
+    return BottomNavigationBar(
+      currentIndex: _currentIndex,
+      onTap: _handleBottomNavigationTap,
+      type: BottomNavigationBarType.fixed,
+      items: const [
+        BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
+        BottomNavigationBarItem(
+            icon: Icon(Icons.account_balance_wallet), label: 'Transactions'),
+        BottomNavigationBarItem(icon: Icon(Icons.pie_chart), label: 'Budget'),
+        BottomNavigationBarItem(icon: Icon(Icons.bar_chart), label: 'Reports'),
+        BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
+      ],
+    );
+  }
+
+  // ========== Navigation Methods ==========
+  void _handleBottomNavigationTap(int index) {
+    if (index == 0) {
+      Navigator.pushNamed(context, '/home');
+    }
+    else if (index == 1) {
+      Navigator.pushNamed(context, '/transactions');
+    }
+    else if (index == 2) {
+      Navigator.pushNamed(context, '/budget_overview');
+    }
+    else if (index == 4) {
+      Navigator.pushNamed(context, '/profile');
+    }
+    else {
+      setState(() => _currentIndex = index);
+    }
   }
 }

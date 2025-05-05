@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class ForgotPasswordScreen extends StatefulWidget {
   const ForgotPasswordScreen({super.key});
@@ -10,6 +11,8 @@ class ForgotPasswordScreen extends StatefulWidget {
 class ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   final TextEditingController _emailController = TextEditingController();
   bool _isResetEmailSent = false;
+  bool _isLoading = false;
+  final FirebaseAuth _auth = FirebaseAuth.instance;
 
   @override
   void dispose() {
@@ -71,22 +74,24 @@ class ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
           keyboardType: TextInputType.emailAddress,
         ),
         SizedBox(height: 24),
-        ElevatedButton(
-          onPressed: _handleResetRequest,
-          style: ElevatedButton.styleFrom(
-            minimumSize: Size(double.infinity, 50),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-          ),
-          child: Text(
-            'Reset Password',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ),
+        _isLoading 
+            ? Center(child: CircularProgressIndicator())
+            : ElevatedButton(
+                onPressed: _handleResetRequest,
+                style: ElevatedButton.styleFrom(
+                  minimumSize: Size(double.infinity, 50),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: Text(
+                  'Reset Password',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
         SizedBox(height: 16),
         Center(
           child: TextButton(
@@ -140,13 +145,10 @@ class ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         ),
         SizedBox(height: 8),
         TextButton(
-          onPressed: () {
-            // Resend email functionality would go here
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Reset email resent')),
-            );
-          },
-          child: Text('Resend Email'),
+          onPressed: _isLoading ? null : _handleResetRequest,
+          child: _isLoading 
+              ? CircularProgressIndicator(strokeWidth: 2)
+              : Text('Resend Email'),
         ),
         SizedBox(height: 24),
         ElevatedButton(
@@ -175,7 +177,7 @@ class ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     );
   }
 
-  void _handleResetRequest() {
+  Future<void> _handleResetRequest() async {
     if (_emailController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Please enter your email address')),
@@ -192,9 +194,47 @@ class ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       return;
     }
     
-    // For demonstration, we'll just show the success screen
-    setState(() {
-      _isResetEmailSent = true;
-    });
+    setState(() => _isLoading = true);
+    
+    try {
+      // Firebase password reset
+      await _auth.sendPasswordResetEmail(email: _emailController.text);
+      
+      if (!mounted) return;
+      
+      // Show success screen
+      setState(() {
+        _isResetEmailSent = true;
+        _isLoading = false;
+      });
+    } on FirebaseAuthException catch (e) {
+      if (!mounted) return;
+      
+      setState(() => _isLoading = false);
+      
+      String errorMessage = 'Failed to send reset email';
+      
+      if (e.code == 'user-not-found') {
+        errorMessage = 'No user found with this email address';
+      } else if (e.code == 'invalid-email') {
+        errorMessage = 'The email address is invalid';
+      }
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(errorMessage),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error: ${e.toString()}'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 }

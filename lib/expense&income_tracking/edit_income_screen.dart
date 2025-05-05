@@ -1,13 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:mobile_app_assignment/models/transaction_model.dart';
 
 class EditIncomeScreen extends StatefulWidget {
+  const EditIncomeScreen({super.key});
+
   @override
-  _EditIncomeScreenState createState() => _EditIncomeScreenState();
+  EditIncomeScreenState createState() => EditIncomeScreenState();
 }
 
-class _EditIncomeScreenState extends State<EditIncomeScreen> {
+class EditIncomeScreenState extends State<EditIncomeScreen> {
   final _formKey = GlobalKey<FormState>();
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   
   // Form field controllers
   late TextEditingController _titleController;
@@ -29,6 +36,7 @@ class _EditIncomeScreenState extends State<EditIncomeScreen> {
   ];
 
   bool _isLoading = true;
+  bool _hasLoadedInitialData = false;
   String _incomeId = '';
 
   @override
@@ -45,45 +53,49 @@ class _EditIncomeScreenState extends State<EditIncomeScreen> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     
-    // Get the income ID from the route arguments
     final arguments = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
-    if (arguments != null && arguments.containsKey('id')) {
+    if (arguments != null && arguments.containsKey('id') && !_hasLoadedInitialData) {
       _incomeId = arguments['id'] as String;
       _loadIncomeData();
-    } else {
-      // No ID provided, show error and go back
+      _hasLoadedInitialData = true;
+    } else if (arguments == null || !arguments.containsKey('id')) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: No income ID provided')),
+          const SnackBar(content: Text('Error: No income ID provided')),
         );
       });
     }
   }
 
-  // Load income data (simulated)
-  void _loadIncomeData() {
-    // In a real app, this would fetch from a database or API
-    // Simulated loading delay
-    Future.delayed(Duration(milliseconds: 500), () {
-      // Dummy data for this template
-      final incomeData = {
-        'title': 'Salary',
-        'amount': 4500.00,
-        'date': '2025-03-15',
-        'category': 'Salary',
-        'description': 'Monthly salary',
-      };
-      
-      setState(() {
-        _titleController.text = incomeData['title'] as String;
-        _amountController.text = (incomeData['amount'] as double).toString();
-        _selectedDate = DateTime.parse(incomeData['date'] as String);
-        _selectedCategory = incomeData['category'] as String;
-        _descriptionController.text = incomeData['description'] as String;
-        _isLoading = false;
-      });
-    });
+  void _loadIncomeData() async {
+    try {
+      final doc = await _firestore.collection('transactions').doc(_incomeId).get();
+      if (doc.exists) {
+        final transaction = TransactionModel.fromFirestore(doc);
+        
+        setState(() {
+          _titleController.text = transaction.title;
+          _amountController.text = transaction.amount.toString();
+          _selectedDate = transaction.date;
+          _selectedCategory = transaction.category;
+          _descriptionController.text = transaction.notes ?? '';
+          _isLoading = false;
+        });
+      } else {
+        if (!mounted) return;
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Income not found')),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error loading income: ${e.toString()}')),
+      );
+      Navigator.pop(context);
+    }
   }
 
   @override
@@ -98,18 +110,18 @@ class _EditIncomeScreenState extends State<EditIncomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Edit Income'),
+        title: const Text('Edit Income'),
         actions: [
           IconButton(
-            icon: Icon(Icons.delete),
+            icon: const Icon(Icons.delete),
             onPressed: _showDeleteConfirmation,
           ),
         ],
       ),
       body: _isLoading
-          ? Center(child: CircularProgressIndicator())
+          ? const Center(child: CircularProgressIndicator())
           : SingleChildScrollView(
-              padding: EdgeInsets.all(16.0),
+              padding: const EdgeInsets.all(16.0),
               child: Form(
                 key: _formKey,
                 child: Column(
@@ -118,7 +130,7 @@ class _EditIncomeScreenState extends State<EditIncomeScreen> {
                     // Title field
                     TextFormField(
                       controller: _titleController,
-                      decoration: InputDecoration(
+                      decoration: const InputDecoration(
                         labelText: 'Title',
                         hintText: 'e.g., Monthly Salary',
                         border: OutlineInputBorder(),
@@ -131,12 +143,12 @@ class _EditIncomeScreenState extends State<EditIncomeScreen> {
                         return null;
                       },
                     ),
-                    SizedBox(height: 16),
+                    const SizedBox(height: 16),
                     
                     // Amount field
                     TextFormField(
                       controller: _amountController,
-                      decoration: InputDecoration(
+                      decoration: const InputDecoration(
                         labelText: 'Amount (RM)',
                         hintText: 'e.g., 4500.00',
                         border: OutlineInputBorder(),
@@ -153,13 +165,13 @@ class _EditIncomeScreenState extends State<EditIncomeScreen> {
                         return null;
                       },
                     ),
-                    SizedBox(height: 16),
+                    const SizedBox(height: 16),
                     
                     // Date picker
                     InkWell(
                       onTap: _pickDate,
                       child: InputDecorator(
-                        decoration: InputDecoration(
+                        decoration: const InputDecoration(
                           labelText: 'Date',
                           border: OutlineInputBorder(),
                           prefixIcon: Icon(Icons.calendar_today),
@@ -170,16 +182,16 @@ class _EditIncomeScreenState extends State<EditIncomeScreen> {
                             Text(
                               DateFormat('dd MMM yyyy').format(_selectedDate),
                             ),
-                            Icon(Icons.arrow_drop_down),
+                            const Icon(Icons.arrow_drop_down),
                           ],
                         ),
                       ),
                     ),
-                    SizedBox(height: 16),
+                    const SizedBox(height: 16),
                     
                     // Category dropdown
                     InputDecorator(
-                      decoration: InputDecoration(
+                      decoration: const InputDecoration(
                         labelText: 'Category',
                         border: OutlineInputBorder(),
                         prefixIcon: Icon(Icons.category),
@@ -198,7 +210,7 @@ class _EditIncomeScreenState extends State<EditIncomeScreen> {
                                     color: _getCategoryColor(category),
                                     size: 20,
                                   ),
-                                  SizedBox(width: 8),
+                                  const SizedBox(width: 8),
                                   Text(category),
                                 ],
                               ),
@@ -214,12 +226,12 @@ class _EditIncomeScreenState extends State<EditIncomeScreen> {
                         ),
                       ),
                     ),
-                    SizedBox(height: 16),
+                    const SizedBox(height: 16),
                     
                     // Description field
                     TextFormField(
                       controller: _descriptionController,
-                      decoration: InputDecoration(
+                      decoration: const InputDecoration(
                         labelText: 'Description (Optional)',
                         hintText: 'Add notes about this income',
                         border: OutlineInputBorder(),
@@ -227,7 +239,7 @@ class _EditIncomeScreenState extends State<EditIncomeScreen> {
                       ),
                       maxLines: 3,
                     ),
-                    SizedBox(height: 24),
+                    const SizedBox(height: 24),
                     
                     // Submit button
                     SizedBox(
@@ -235,9 +247,9 @@ class _EditIncomeScreenState extends State<EditIncomeScreen> {
                       child: ElevatedButton(
                         onPressed: _updateIncome,
                         style: ElevatedButton.styleFrom(
-                          padding: EdgeInsets.symmetric(vertical: 16),
+                          padding: const EdgeInsets.symmetric(vertical: 16),
                         ),
-                        child: Text(
+                        child: const Text(
                           'Update Income',
                           style: TextStyle(fontSize: 16),
                         ),
@@ -265,24 +277,49 @@ class _EditIncomeScreenState extends State<EditIncomeScreen> {
     }
   }
 
-  void _updateIncome() {
+  void _updateIncome() async {
     if (_formKey.currentState!.validate()) {
-      // Update the income data
-      // This is just a template, so we'll just print it
-      print('Updating income ID: $_incomeId');
-      print('Title: ${_titleController.text}');
-      print('Amount: ${_amountController.text}');
-      print('Date: ${DateFormat('yyyy-MM-dd').format(_selectedDate)}');
-      print('Category: $_selectedCategory');
-      print('Description: ${_descriptionController.text}');
-      
-      // Show success message
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Income updated successfully')),
-      );
-      
-      // Navigate back to the income list screen
-      Navigator.pop(context);
+      try {
+        setState(() {
+          _isLoading = true;
+        });
+
+        final user = _auth.currentUser!;  // No null check needed
+
+        TransactionModel transaction = TransactionModel(
+          id: _incomeId,
+          title: _titleController.text,
+          amount: double.parse(_amountController.text),
+          date: _selectedDate,
+          category: _selectedCategory,
+          notes: _descriptionController.text.isEmpty
+              ? null
+              : _descriptionController.text,
+          userId: user.uid,
+          isExpense: false, // Important: Set to false for income
+        );
+
+        await _firestore.collection('transactions').doc(_incomeId).update(transaction.toMap());
+
+        if (!mounted) return;
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Income updated successfully')),
+        );
+
+        Navigator.pop(context);
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error updating income: ${e.toString()}')),
+        );
+      } finally {
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+          });
+        }
+      }
     }
   }
 
@@ -291,25 +328,43 @@ class _EditIncomeScreenState extends State<EditIncomeScreen> {
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
-          title: Text('Delete Income'),
-          content: Text('Are you sure you want to delete this income?'),
+          title: const Text('Delete Income'),
+          content: const Text('Are you sure you want to delete this income?'),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
-              child: Text('Cancel'),
+              child: const Text('Cancel'),
             ),
             TextButton(
-              onPressed: () {
-                // Delete the income
+              onPressed: () async {
                 Navigator.of(context).pop();
-                
-                // Show success message and navigate back
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Income deleted')),
-                );
-                Navigator.pop(context);
+                try {
+                  setState(() {
+                    _isLoading = true;
+                  });
+
+                  await _firestore.collection('transactions').doc(_incomeId).delete();
+
+                  if (!mounted) return;
+
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Income deleted')),
+                  );
+                  Navigator.popUntil(context, (route) => route.isFirst);
+                } catch (e) {
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Error deleting income: ${e.toString()}')),
+                  );
+                } finally {
+                  if (mounted) {
+                    setState(() {
+                      _isLoading = false;
+                    });
+                  }
+                }
               },
-              child: Text(
+              child: const Text(
                 'Delete',
                 style: TextStyle(color: Colors.red),
               ),
@@ -350,7 +405,7 @@ class _EditIncomeScreenState extends State<EditIncomeScreen> {
       case 'Gift':
         return Icons.card_giftcard;
       case 'Bonus':
-        return Icons.stars;
+        return Icons.star;
       case 'Refund':
         return Icons.replay;
       default:

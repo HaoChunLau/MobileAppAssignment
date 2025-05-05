@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:mobile_app_assignment/models/user_model.dart';
 
 class SignUpScreen extends StatefulWidget {
   final Function(bool) onThemeChanged;
-
   const SignUpScreen({super.key, required this.onThemeChanged});
 
   @override
@@ -14,11 +16,16 @@ class SignUpScreenState extends State<SignUpScreen> {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _phoneController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
-  final TextEditingController _confirmPasswordController = TextEditingController();
-  
+  final TextEditingController _confirmPasswordController =
+      TextEditingController();
+
   bool _isPasswordVisible = false;
   bool _isConfirmPasswordVisible = false;
   bool _agreeToTerms = false;
+  bool _isLoading = false; // Added loading state
+
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   @override
   void dispose() {
@@ -28,6 +35,97 @@ class SignUpScreenState extends State<SignUpScreen> {
     _passwordController.dispose();
     _confirmPasswordController.dispose();
     super.dispose();
+  }
+
+  Future<void> _handleSignUp() async {
+    if (!_validateInputs()) return;
+    if (!_agreeToTerms) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please agree to the terms')),
+      );
+      return;
+    }
+
+    if (_passwordController.text != _confirmPasswordController.text) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Passwords do not match')),
+      );
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      // 1. Create user in Firebase Auth
+      final UserCredential userCredential =
+          await _auth.createUserWithEmailAndPassword(
+        email: _emailController.text,
+        password: _passwordController.text,
+      );
+
+      // 2. Save additional data to Firestore
+      final UserModel user = UserModel(
+        id: userCredential.user!.uid,
+        email: _emailController.text,
+        name: _nameController.text,
+        phoneNumber: _phoneController.text,
+        currency: 'MYR (RM)',
+        createdAt: DateTime.now(),
+      );
+
+      await _firestore.collection('users').doc(user.id).set(user.toMap());
+
+      if (!mounted) return;
+
+      // 3. Navigate to home screen
+      Navigator.pushReplacementNamed(context, '/');
+    } on FirebaseAuthException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Signup failed: ${e.message}')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: ${e.toString()}')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  bool _validateInputs() {
+    if (_nameController.text.trim().isEmpty) {
+      _showError('Please enter your full name');
+      return false;
+    }
+
+    final emailRegex = RegExp(r'^[^@]+@[^@]+\.[^@]+$');
+    if (!emailRegex.hasMatch(_emailController.text.trim())) {
+      _showError('Please enter a valid email address');
+      return false;
+    }
+
+    final phoneRegex = RegExp(r'^(\+?60|0)[0-9]{8,11}$');
+    if (_phoneController.text.isNotEmpty &&
+        !phoneRegex.hasMatch(_phoneController.text.trim())) {
+      _showError('Please enter a valid Malaysian phone number');
+      return false;
+    }
+
+    if (_passwordController.text.length < 6) {
+      _showError('Password must be at least 6 characters');
+      return false;
+    }
+
+    return true;
+  }
+
+  void _showError(String message) {
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
@@ -133,9 +231,7 @@ class SignUpScreenState extends State<SignUpScreen> {
             prefixIcon: Icon(Icons.lock),
             suffixIcon: IconButton(
               icon: Icon(
-                _isPasswordVisible 
-                    ? Icons.visibility_off 
-                    : Icons.visibility,
+                _isPasswordVisible ? Icons.visibility_off : Icons.visibility,
               ),
               onPressed: () {
                 setState(() {
@@ -157,8 +253,8 @@ class SignUpScreenState extends State<SignUpScreen> {
             prefixIcon: Icon(Icons.lock_clock),
             suffixIcon: IconButton(
               icon: Icon(
-                _isConfirmPasswordVisible 
-                    ? Icons.visibility_off 
+                _isConfirmPasswordVisible
+                    ? Icons.visibility_off
                     : Icons.visibility,
               ),
               onPressed: () {
@@ -218,22 +314,24 @@ class SignUpScreenState extends State<SignUpScreen> {
   }
 
   Widget _buildSignUpButton() {
-    return ElevatedButton(
-      onPressed: _agreeToTerms ? _handleSignUp : null,
-      style: ElevatedButton.styleFrom(
-        padding: EdgeInsets.symmetric(vertical: 16),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
-      ),
-      child: Text(
-        'Create Account',
-        style: TextStyle(
-          fontSize: 16,
-          fontWeight: FontWeight.bold,
-        ),
-      ),
-    );
+    return _isLoading
+        ? Center(child: CircularProgressIndicator())
+        : ElevatedButton(
+            onPressed: _agreeToTerms ? _handleSignUp : null,
+            style: ElevatedButton.styleFrom(
+              padding: EdgeInsets.symmetric(vertical: 16),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            child: Text(
+              'Create Account',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          );
   }
 
   Widget _buildLoginSection() {
@@ -249,31 +347,5 @@ class SignUpScreenState extends State<SignUpScreen> {
         ),
       ],
     );
-  }
-
-  void _handleSignUp() {
-    // Validate inputs
-    if (_nameController.text.isEmpty ||
-        _emailController.text.isEmpty ||
-        _passwordController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Please fill all required fields')),
-      );
-      return;
-    }
-
-    if (_passwordController.text != _confirmPasswordController.text) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Passwords do not match')),
-      );
-      return;
-    }
-
-    // For demonstration, just navigate to home screen
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Account created successfully')),
-    );
-    
-    Navigator.pushReplacementNamed(context, '/');
   }
 }

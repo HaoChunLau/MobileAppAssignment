@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+// import 'package:mobile_app_assignment/models/user_model.dart';
 
 class LoginScreen extends StatefulWidget {
   final Function(bool) onThemeChanged;
-
   const LoginScreen({super.key, required this.onThemeChanged});
 
   @override
@@ -14,12 +16,67 @@ class LoginScreenState extends State<LoginScreen> {
   final TextEditingController _passwordController = TextEditingController();
   bool _isPasswordVisible = false;
   bool _rememberMe = false;
+  bool _isLoading = false; // Added loading state
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   @override
   void dispose() {
     _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
+  }
+
+  Future<void> _handleLogin() async {
+    if (_emailController.text.isEmpty || _passwordController.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter email and password')),
+      );
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      // 1. Sign in with Firebase Auth
+      final UserCredential userCredential =
+          await _auth.signInWithEmailAndPassword(
+        email: _emailController.text,
+        password: _passwordController.text,
+      );
+
+      // 2. Fetch user data from Firestore
+      final DocumentSnapshot userDoc = await _firestore
+          .collection('users')
+          .doc(userCredential.user!.uid)
+          .get();
+
+      if (!userDoc.exists) {
+        throw Exception('User data not found in Firestore');
+      }
+
+      // 3. Convert to UserModel (not used further here)
+      // final UserModel user = UserModel.fromFirestore(userDoc);
+
+      if (!mounted) return;
+
+      // 4. Navigate to home screen
+      Navigator.pushReplacementNamed(context, '/');
+    } on FirebaseAuthException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Login failed: ${e.message}')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: ${e.toString()}')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
   }
 
   @override
@@ -107,9 +164,7 @@ class LoginScreenState extends State<LoginScreen> {
             prefixIcon: Icon(Icons.lock),
             suffixIcon: IconButton(
               icon: Icon(
-                _isPasswordVisible 
-                    ? Icons.visibility_off 
-                    : Icons.visibility,
+                _isPasswordVisible ? Icons.visibility_off : Icons.visibility,
               ),
               onPressed: () {
                 setState(() {
@@ -142,22 +197,24 @@ class LoginScreenState extends State<LoginScreen> {
   }
 
   Widget _buildLoginButton() {
-    return ElevatedButton(
-      onPressed: _handleLogin,
-      style: ElevatedButton.styleFrom(
-        padding: EdgeInsets.symmetric(vertical: 16),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
-      ),
-      child: Text(
-        'Login',
-        style: TextStyle(
-          fontSize: 16,
-          fontWeight: FontWeight.bold,
-        ),
-      ),
-    );
+    return _isLoading
+        ? Center(child: CircularProgressIndicator())
+        : ElevatedButton(
+            onPressed: _handleLogin,
+            style: ElevatedButton.styleFrom(
+              padding: EdgeInsets.symmetric(vertical: 16),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            child: Text(
+              'Login',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          );
   }
 
   Widget _buildForgotPassword() {
@@ -182,17 +239,5 @@ class LoginScreenState extends State<LoginScreen> {
         ),
       ],
     );
-  }
-
-  void _handleLogin() {
-    // Implement login logic here
-    // For demonstration, we'll just navigate to the home screen
-    if (_emailController.text.isNotEmpty && _passwordController.text.isNotEmpty) {
-      Navigator.pushReplacementNamed(context, '/');
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Please enter email and password')),
-      );
-    }
   }
 }

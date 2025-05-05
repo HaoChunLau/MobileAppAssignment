@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class ChangePasswordScreen extends StatefulWidget {
   const ChangePasswordScreen({super.key});
@@ -15,6 +16,9 @@ class ChangePasswordScreenState extends State<ChangePasswordScreen> {
   bool _isCurrentPasswordVisible = false;
   bool _isNewPasswordVisible = false;
   bool _isConfirmPasswordVisible = false;
+  bool _isLoading = false;
+
+  final FirebaseAuth _auth = FirebaseAuth.instance;
 
   @override
   void dispose() {
@@ -225,25 +229,27 @@ class ChangePasswordScreenState extends State<ChangePasswordScreen> {
   }
 
   Widget _buildUpdateButton() {
-    return ElevatedButton(
-      onPressed: _handlePasswordChange,
-      style: ElevatedButton.styleFrom(
-        minimumSize: Size(double.infinity, 50),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
-      ),
-      child: Text(
-        'Update Password',
-        style: TextStyle(
-          fontSize: 16,
-          fontWeight: FontWeight.bold,
-        ),
-      ),
-    );
+    return _isLoading
+        ? Center(child: CircularProgressIndicator())
+        : ElevatedButton(
+            onPressed: _handlePasswordChange,
+            style: ElevatedButton.styleFrom(
+              minimumSize: Size(double.infinity, 50),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            child: Text(
+              'Update Password',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          );
   }
 
-  void _handlePasswordChange() {
+  Future<void> _handlePasswordChange() async {
     // Validate inputs
     if (_currentPasswordController.text.isEmpty ||
         _newPasswordController.text.isEmpty ||
@@ -268,14 +274,73 @@ class ChangePasswordScreenState extends State<ChangePasswordScreen> {
       return;
     }
     
-    // For demonstration, show success message and navigate back
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Password updated successfully'),
-        backgroundColor: Colors.green,
-      ),
-    );
+    setState(() => _isLoading = true);
     
-    Navigator.pop(context);
+    try {
+      // Get current user
+      final User? user = _auth.currentUser;
+      
+      if (user == null) {
+        throw Exception("User not authenticated");
+      }
+      
+      // Get credentials with current password for reauthentication
+      AuthCredential credential = EmailAuthProvider.credential(
+        email: user.email!,
+        password: _currentPasswordController.text,
+      );
+      
+      // Reauthenticate user
+      await user.reauthenticateWithCredential(credential);
+      
+      // Update password
+      await user.updatePassword(_newPasswordController.text);
+      
+      if (!mounted) return;
+      
+      // Show success message
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Password updated successfully'),
+          backgroundColor: Colors.green,
+        ),
+      );
+      
+      Navigator.pop(context);
+    } on FirebaseAuthException catch (e) {
+      if (!mounted) return;
+      
+      String errorMessage = 'Failed to update password';
+      
+      if (e.code == 'wrong-password') {
+        errorMessage = 'The current password you entered is incorrect';
+      } else if (e.code == 'weak-password') {
+        errorMessage = 'The new password is too weak';
+      } else if (e.code == 'requires-recent-login') {
+        errorMessage = 'Please log in again before changing your password';
+        // You could handle this by signing the user out and redirecting to login
+        await _auth.signOut();
+        Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
+      }
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(errorMessage),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error: ${e.toString()}'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
   }
 }

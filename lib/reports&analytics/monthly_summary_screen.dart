@@ -407,7 +407,7 @@ class MonthlySummaryScreenState extends State<MonthlySummaryScreen> {
         Container(
           padding: EdgeInsets.all(8),
           decoration: BoxDecoration(
-            color: color.withOpacity(0.1),
+            color: color.withAlpha((0.1 * 255).round()),
             borderRadius: BorderRadius.circular(8),
           ),
           child: Icon(

@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:mobile_app_assignment/category_utils.dart';
+import 'package:mobile_app_assignment/models/budget_model.dart';
 
 class BudgetSettingScreen extends StatefulWidget {
-  const BudgetSettingScreen({Key? key}) : super(key: key);
+  const BudgetSettingScreen({super.key});
 
   @override
   State<BudgetSettingScreen> createState() => _BudgetSettingScreenState();
@@ -10,71 +14,79 @@ class BudgetSettingScreen extends StatefulWidget {
 
 class _BudgetSettingScreenState extends State<BudgetSettingScreen> {
   final _formKey = GlobalKey<FormState>();
-  final TextEditingController _nameController = TextEditingController();
+  final TextEditingController _categoryController = TextEditingController();
   final TextEditingController _amountController = TextEditingController();
   
-  IconData _selectedIcon = Icons.shopping_cart;
-  Color _selectedColor = Colors.blue;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseAuth _auth = FirebaseAuth.instance;
   
-  // Predefined list of icons to choose from
-  final List<IconData> _availableIcons = [
-    Icons.shopping_cart,
-    Icons.restaurant,
-    Icons.directions_car,
-    Icons.movie,
-    Icons.lightbulb,
-    Icons.local_hospital,
-    Icons.shopping_bag,
-    Icons.house,
-    Icons.school,
-    Icons.sports_basketball,
-    Icons.airplanemode_active,
-    Icons.pets,
-  ];
-  
-  // Predefined list of colors to choose from
-  final List<Color> _availableColors = [
-    Colors.blue,
-    Colors.red,
-    Colors.green,
-    Colors.orange,
-    Colors.purple,
-    Colors.teal,
-    Colors.amber,
-    Colors.indigo,
-    Colors.pink,
-    Colors.cyan,
-  ];
+  // Initialize these with null or empty values
+  late IconData _selectedIcon;
+  late Color _selectedColor;
+  DateTime _selectedDate = DateTime.now(); // Default to current date
+
+  BudgetModel? _editingBudget;
 
   @override
   void initState() {
     super.initState();
-    // Check if we're editing an existing budget category
+    
+    final defaultCategory = CategoryUtils.categories.isNotEmpty 
+        ? CategoryUtils.categories[0] 
+        : "Food";
+    
+    _categoryController.text = defaultCategory;
+    _selectedIcon = CategoryUtils.getCategoryIcon(defaultCategory);
+    _selectedColor = CategoryUtils.getCategoryColor(defaultCategory);
+    
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final arguments = ModalRoute.of(context)?.settings.arguments;
-      if (arguments != null && arguments is BudgetCategory) {
-        _nameController.text = arguments.name;
-        _amountController.text = arguments.allocated.toString();
-        _selectedIcon = arguments.icon;
-        _selectedColor = arguments.color;
+      
+      // Update this section to handle both cases:
+      if (arguments != null) {
+        if (arguments is BudgetModel) {
+          // Legacy case - directly passing a budget model
+          setState(() {
+            _editingBudget = arguments;
+            _categoryController.text = _editingBudget!.budgetCategory;
+            _amountController.text = _editingBudget!.targetAmount.toString();
+            _selectedIcon = CategoryUtils.getCategoryIcon(_editingBudget!.budgetCategory);
+            _selectedColor = CategoryUtils.getCategoryColor(_editingBudget!.budgetCategory);
+          });
+        } else if (arguments is Map) {
+          // New way - passing a map with the necessary data
+          if (arguments['budget'] != null) {
+            setState(() {
+              _editingBudget = arguments['budget'] as BudgetModel;
+              _categoryController.text = _editingBudget!.budgetCategory;
+              _amountController.text = _editingBudget!.budgetCategory.toString();
+              _selectedIcon = CategoryUtils.getCategoryIcon(_editingBudget!.budgetCategory);
+              _selectedColor = CategoryUtils.getCategoryColor(_editingBudget!.budgetCategory);
+            });
+          }
+          
+          if (arguments['selectedDate'] != null) {
+            setState(() {
+              _selectedDate = arguments['selectedDate'] as DateTime;
+            });
+          }
+        }
       }
     });
   }
 
   @override
   void dispose() {
-    _nameController.dispose();
+    _categoryController.dispose();
     _amountController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final isEditing = ModalRoute.of(context)?.settings.arguments != null;
-    
     return Scaffold(
       appBar: AppBar(
-        title: Text(isEditing ? 'Edit Budget' : 'Create Budget'),
+        title: Text(_editingBudget == null ? 'Create Budget' : 'Edit Budget'),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
@@ -86,26 +98,6 @@ class _BudgetSettingScreenState extends State<BudgetSettingScreen> {
               _buildCategoryNameField(),
               const SizedBox(height: 20),
               _buildAmountField(),
-              const SizedBox(height: 24),
-              const Text(
-                'Category Icon',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 12),
-              _buildIconSelection(),
-              const SizedBox(height: 24),
-              const Text(
-                'Category Color',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 12),
-              _buildColorSelection(),
               const SizedBox(height: 32),
               _buildPreview(),
               const SizedBox(height: 32),
@@ -114,9 +106,9 @@ class _BudgetSettingScreenState extends State<BudgetSettingScreen> {
                 style: ElevatedButton.styleFrom(
                   minimumSize: const Size(double.infinity, 50),
                 ),
-                child: Text(isEditing ? 'Update Budget' : 'Create Budget'),
+                child: Text(_editingBudget == null ? 'Create Budget' : 'Update Budget'),
               ),
-              if (isEditing) 
+              if (_editingBudget != null) 
                 Padding(
                   padding: const EdgeInsets.only(top: 16.0),
                   child: OutlinedButton(
@@ -136,19 +128,44 @@ class _BudgetSettingScreenState extends State<BudgetSettingScreen> {
   }
 
   Widget _buildCategoryNameField() {
-    return TextFormField(
-      controller: _nameController,
+    return InputDecorator(
       decoration: const InputDecoration(
-        labelText: 'Category Name',
-        hintText: 'E.g., Food, Transportation, Entertainment',
+        labelText: 'Category',
         border: OutlineInputBorder(),
       ),
-      validator: (value) {
-        if (value == null || value.isEmpty) {
-          return 'Please enter a category name';
-        }
-        return null;
-      },
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          value: CategoryUtils.categories.contains(_categoryController.text) 
+              ? _categoryController.text 
+              : (CategoryUtils.categories.isNotEmpty ? CategoryUtils.categories[0] : null),
+          isExpanded: true,
+          items: CategoryUtils.categories.map((String category) {
+            return DropdownMenuItem<String>(
+              value: category,
+              child: Row(
+                children: [
+                  Icon(
+                    CategoryUtils.getCategoryIcon(category),
+                    color: CategoryUtils.getCategoryColor(category),
+                    size: 20,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(category),
+                ],
+              ),
+            );
+          }).toList(),
+          onChanged: (String? newValue) {
+            if (newValue != null) {
+              setState(() {
+                _categoryController.text = newValue;
+                _selectedIcon = CategoryUtils.getCategoryIcon(newValue);
+                _selectedColor = CategoryUtils.getCategoryColor(newValue);
+              });
+            }
+          },
+        ),
+      ),
     );
   }
 
@@ -178,105 +195,9 @@ class _BudgetSettingScreenState extends State<BudgetSettingScreen> {
     );
   }
 
-  Widget _buildIconSelection() {
-    return Container(
-      height: 100,
-      decoration: BoxDecoration(
-        border: Border.all(color: Colors.grey),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: GridView.builder(
-        padding: const EdgeInsets.all(8),
-        scrollDirection: Axis.horizontal,
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 2,
-          crossAxisSpacing: 8,
-          mainAxisSpacing: 8,
-        ),
-        itemCount: _availableIcons.length,
-        itemBuilder: (context, index) {
-          final icon = _availableIcons[index];
-          final isSelected = icon == _selectedIcon;
-          
-          return GestureDetector(
-            onTap: () {
-              setState(() {
-                _selectedIcon = icon;
-              });
-            },
-            child: Container(
-              decoration: BoxDecoration(
-                color: isSelected ? _selectedColor.withOpacity(0.2) : Colors.transparent,
-                border: Border.all(
-                  color: isSelected ? _selectedColor : Colors.grey.shade300,
-                  width: isSelected ? 2 : 1,
-                ),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Icon(
-                icon,
-                color: isSelected ? _selectedColor : Colors.grey,
-                size: 28,
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _buildColorSelection() {
-    return Container(
-      height: 60,
-      decoration: BoxDecoration(
-        border: Border.all(color: Colors.grey),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: ListView.builder(
-        padding: const EdgeInsets.all(8),
-        scrollDirection: Axis.horizontal,
-        itemCount: _availableColors.length,
-        itemBuilder: (context, index) {
-          final color = _availableColors[index];
-          final isSelected = color == _selectedColor;
-          
-          return GestureDetector(
-            onTap: () {
-              setState(() {
-                _selectedColor = color;
-              });
-            },
-            child: Container(
-              width: 44,
-              height: 44,
-              margin: const EdgeInsets.symmetric(horizontal: 4),
-              decoration: BoxDecoration(
-                color: color,
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: isSelected ? Colors.white : Colors.transparent,
-                  width: 3,
-                ),
-                boxShadow: isSelected
-                    ? [
-                        BoxShadow(
-                          color: Colors.grey.withOpacity(0.5),
-                          spreadRadius: 1,
-                          blurRadius: 2,
-                        ),
-                      ]
-                    : null,
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-
   Widget _buildPreview() {
-    final categoryName = _nameController.text.isNotEmpty
-        ? _nameController.text
+    final categoryName = _categoryController.text.isNotEmpty
+        ? _categoryController.text
         : 'Category Name';
     final amount = double.tryParse(_amountController.text) ?? 0.0;
     
@@ -303,7 +224,7 @@ class _BudgetSettingScreenState extends State<BudgetSettingScreen> {
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: _selectedColor.withOpacity(0.1),
+                    color: _selectedColor.withAlpha((0.1 * 255).round()),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Icon(
@@ -353,68 +274,73 @@ class _BudgetSettingScreenState extends State<BudgetSettingScreen> {
     );
   }
 
-  void _saveBudget() {
+  Future<void> _saveBudget() async {
     if (_formKey.currentState!.validate()) {
-      // In a real app, you would save this data to a database
-      // For now, we'll just navigate back
-      Navigator.pop(context);
-      
-      // Show a snackbar to indicate success
+      try {
+        final userId = _auth.currentUser?.uid;
+        if (userId == null) return;
+
+        // Use _selectedDate instead of now
+        final firstDayOfMonth = DateTime(_selectedDate.year, _selectedDate.month, 1);
+        final lastDayOfMonth = DateTime(_selectedDate.year, _selectedDate.month + 1, 0);
+
+        final budgetData = {
+          'category': _categoryController.text,
+          'amount': double.parse(_amountController.text),
+          'startDate': firstDayOfMonth,
+          'endDate': lastDayOfMonth,
+          'userId': userId,
+        };
+
+        if (_editingBudget == null) {
+          await _firestore.collection('budgets').add(budgetData);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Budget created successfully'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        } else {
+          await _firestore.collection('budgets').doc(_editingBudget!.budgetId).update(budgetData);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Budget updated successfully'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+
+        Navigator.pop(context);
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _deleteBudget() async {
+    try {
+      if (_editingBudget != null) {
+        await _firestore.collection('budgets').doc(_editingBudget!.budgetId).delete();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Budget deleted successfully'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        Navigator.pop(context);
+      }
+    } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Budget saved successfully'),
-          backgroundColor: Colors.green,
+        SnackBar(
+          content: Text('Error: ${e.toString()}'),
+          backgroundColor: Colors.red,
         ),
       );
     }
   }
-
-  void _deleteBudget() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete Budget'),
-        content: const Text('Are you sure you want to delete this budget category?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context); // Close dialog
-              Navigator.pop(context); // Go back to previous screen
-              
-              // Show a snackbar to indicate deletion
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Budget deleted'),
-                  backgroundColor: Colors.red,
-                ),
-              );
-            },
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// BudgetCategory class for reference (should match with the one in BudgetOverviewScreen)
-class BudgetCategory {
-  final String name;
-  final double allocated;
-  final double spent;
-  final IconData icon;
-  final Color color;
-
-  BudgetCategory({
-    required this.name,
-    required this.allocated,
-    required this.spent,
-    required this.icon,
-    required this.color,
-  });
 }

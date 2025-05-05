@@ -15,7 +15,7 @@ class ExportScreenState extends State<ExportScreen> {
     start: DateTime.now().subtract(Duration(days: 30)),
     end: DateTime.now(),
   );
-  Set<String> _selectedData = {'Expenses', 'Income'};
+  final Set<String> _selectedData = {'Expenses', 'Income'};
   bool _includeCategories = true;
   bool _includeNotes = true;
 

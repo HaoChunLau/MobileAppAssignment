@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:mobile_app_assignment/category_utils.dart';
+import 'package:mobile_app_assignment/models/transaction_model.dart';
 
 class EditExpenseScreen extends StatefulWidget {
   const EditExpenseScreen({super.key});
@@ -10,6 +14,8 @@ class EditExpenseScreen extends StatefulWidget {
 
 class EditExpenseScreenState extends State<EditExpenseScreen> {
   final _formKey = GlobalKey<FormState>();
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   
   // Form field controllers
   late TextEditingController _titleController;
@@ -35,6 +41,7 @@ class EditExpenseScreenState extends State<EditExpenseScreen> {
 
   bool _isLoading = true;
   String _expenseId = '';
+  bool _dataLoaded = false;
 
   @override
   void initState() {
@@ -54,7 +61,10 @@ class EditExpenseScreenState extends State<EditExpenseScreen> {
     final arguments = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
     if (arguments != null && arguments.containsKey('id')) {
       _expenseId = arguments['id'] as String;
-      _loadExpenseData();
+      // Only load data if not already loaded
+      if (!_dataLoaded) {
+        _loadExpenseData();
+      }
     } else {
       // No ID provided, show error and go back
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -66,29 +76,36 @@ class EditExpenseScreenState extends State<EditExpenseScreen> {
     }
   }
 
-  // Load expense data (simulated)
-  void _loadExpenseData() {
-    // In a real app, this would fetch from a database or API
-    // Simulated loading delay
-    Future.delayed(Duration(milliseconds: 500), () {
-      // Dummy data for this template
-      final expenseData = {
-        'title': 'Groceries',
-        'amount': 85.40,
-        'date': '2025-03-21',
-        'category': 'Food',
-        'description': 'Weekly grocery shopping',
-      };
-      
-      setState(() {
-        _titleController.text = expenseData['title'] as String;
-        _amountController.text = (expenseData['amount'] as double).toString();
-        _selectedDate = DateTime.parse(expenseData['date'] as String);
-        _selectedCategory = expenseData['category'] as String;
-        _descriptionController.text = expenseData['description'] as String;
-        _isLoading = false;
-      });
-    });
+  // Load expense data from Firestore
+  void _loadExpenseData() async {
+    try {
+      final doc = await _firestore.collection('transactions').doc(_expenseId).get();
+      if (doc.exists) {
+        final transaction = TransactionModel.fromFirestore(doc);
+        
+        setState(() {
+          _titleController.text = transaction.title;
+          _amountController.text = transaction.amount.toString();
+          _selectedDate = transaction.date;
+          _selectedCategory = transaction.category;
+          _descriptionController.text = transaction.notes ?? '';
+          _isLoading = false;
+          _dataLoaded = true; // Mark data as loaded
+        });
+      } else {
+        if (!mounted) return;
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Expense not found')),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error loading expense: ${e.toString()}')),
+      );
+      Navigator.pop(context);
+    }
   }
 
   @override
@@ -199,8 +216,8 @@ class EditExpenseScreenState extends State<EditExpenseScreen> {
                               child: Row(
                                 children: [
                                   Icon(
-                                    _getCategoryIcon(category),
-                                    color: _getCategoryColor(category),
+                                    CategoryUtils.getCategoryIcon(category),
+                                    color: CategoryUtils.getCategoryColor(category),
                                     size: 20,
                                   ),
                                   SizedBox(width: 8),
@@ -210,7 +227,7 @@ class EditExpenseScreenState extends State<EditExpenseScreen> {
                             );
                           }).toList(),
                           onChanged: (String? newValue) {
-                            if (newValue != null) {
+                            if (newValue != null && mounted) {
                               setState(() {
                                 _selectedCategory = newValue;
                               });
@@ -264,30 +281,57 @@ class EditExpenseScreenState extends State<EditExpenseScreen> {
     );
     
     if (pickedDate != null && pickedDate != _selectedDate) {
-      setState(() {
-        _selectedDate = pickedDate;
-      });
+      if (mounted) {  // Check if widget is still mounted
+        setState(() {
+          _selectedDate = pickedDate;
+        });
+      }
     }
   }
 
-  void _updateExpense() {
+  void _updateExpense() async {
     if (_formKey.currentState!.validate()) {
-      // Update the expense data
-      // This is just a template, so we'll just print it
-      print('Updating expense ID: $_expenseId');
-      print('Title: ${_titleController.text}');
-      print('Amount: ${_amountController.text}');
-      print('Date: ${DateFormat('yyyy-MM-dd').format(_selectedDate)}');
-      print('Category: $_selectedCategory');
-      print('Description: ${_descriptionController.text}');
-      
-      // Show success message
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Expense updated successfully')),
-      );
-      
-      // Navigate back to the expense list screen
-      Navigator.pop(context);
+      try {
+        setState(() {
+          _isLoading = true;
+        });
+
+        final user = _auth.currentUser!;  // No null check needed
+
+        TransactionModel transaction = TransactionModel(
+          id: _expenseId,
+          title: _titleController.text,
+          amount: double.parse(_amountController.text),
+          date: _selectedDate,
+          category: _selectedCategory,
+          notes: _descriptionController.text.isEmpty
+              ? null
+              : _descriptionController.text,
+          userId: user.uid,
+          isExpense: true,
+        );
+
+        await _firestore.collection('transactions').doc(_expenseId).update(transaction.toMap());
+
+        if (!mounted) return;
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Expense updated successfully')),
+        );
+
+        Navigator.pop(context);
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error updating expense: ${e.toString()}')),
+        );
+      } finally {
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+          });
+        }
+      }
     }
   }
 
@@ -304,15 +348,35 @@ class EditExpenseScreenState extends State<EditExpenseScreen> {
               child: Text('Cancel'),
             ),
             TextButton(
-              onPressed: () {
-                // Delete the expense
+              onPressed: () async {
                 Navigator.of(context).pop();
-                
-                // Show success message and navigate back
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Expense deleted')),
-                );
-                Navigator.pop(context);
+                try {
+                  setState(() {
+                    _isLoading = true;
+                  });
+
+                  await _firestore.collection('transactions').doc(_expenseId).delete();
+
+                  if (!mounted) return;
+
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Expense deleted')),
+                  );
+                  // Navigate back to the expense list screen
+                  // Navigator.popUntil(context, (route) => route.isFirst);
+                  Navigator.pop(context);
+                } catch (e) {
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Error deleting expense: ${e.toString()}')),
+                  );
+                } finally {
+                  if (mounted) {
+                    setState(() {
+                      _isLoading = false;
+                    });
+                  }
+                }
               },
               child: Text(
                 'Delete',
@@ -323,55 +387,5 @@ class EditExpenseScreenState extends State<EditExpenseScreen> {
         );
       },
     );
-  }
-
-  Color _getCategoryColor(String category) {
-    switch (category) {
-      case 'Food':
-        return Colors.orange;
-      case 'Transportation':
-        return Colors.blue;
-      case 'Entertainment':
-        return Colors.purple;
-      case 'Utilities':
-        return Colors.green;
-      case 'Housing':
-        return Colors.brown;
-      case 'Healthcare':
-        return Colors.red;
-      case 'Shopping':
-        return Colors.pink;
-      case 'Education':
-        return Colors.teal;
-      case 'Personal':
-        return Colors.indigo;
-      default:
-        return Colors.grey;
-    }
-  }
-
-  IconData _getCategoryIcon(String category) {
-    switch (category) {
-      case 'Food':
-        return Icons.restaurant;
-      case 'Transportation':
-        return Icons.directions_car;
-      case 'Entertainment':
-        return Icons.movie;
-      case 'Utilities':
-        return Icons.lightbulb;
-      case 'Housing':
-        return Icons.home;
-      case 'Healthcare':
-        return Icons.medical_services;
-      case 'Shopping':
-        return Icons.shopping_bag;
-      case 'Education':
-        return Icons.school;
-      case 'Personal':
-        return Icons.person;
-      default:
-        return Icons.attach_money;
-    }
   }
 }

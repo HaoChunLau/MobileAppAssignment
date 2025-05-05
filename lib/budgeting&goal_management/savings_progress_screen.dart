@@ -4,7 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:mobile_app_assignment/budgeting&goal_management/savings_goal_screen.dart';
 
 class SavingsProgressScreen extends StatefulWidget {
-  const SavingsProgressScreen({Key? key}) : super(key: key);
+  const SavingsProgressScreen({super.key});
 
   @override
   State<SavingsProgressScreen> createState() => _SavingsProgressScreenState();
@@ -58,7 +58,7 @@ class _SavingsProgressScreenState extends State<SavingsProgressScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.edit),
-            onPressed: () => _showEditGoalDialog(goal),
+            onPressed: () => _navigateToEditGoalScreen(),
           ),
         ],
       ),
@@ -100,7 +100,7 @@ class _SavingsProgressScreenState extends State<SavingsProgressScreen> {
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: goal.color.withOpacity(0.1),
+                    color: goal.color.withAlpha((0.1 * 255).round()),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Icon(
@@ -335,7 +335,7 @@ class _SavingsProgressScreenState extends State<SavingsProgressScreen> {
                     margin: const EdgeInsets.only(bottom: 8),
                     child: ListTile(
                       leading: CircleAvatar(
-                        backgroundColor: goal.color.withOpacity(0.1),
+                        backgroundColor: goal.color.withAlpha((0.1 * 255).round()),
                         child: Icon(
                           contribution.amount > 0 ? Icons.arrow_upward : Icons.arrow_downward,
                           color: contribution.amount > 0 ? Colors.green : Colors.red,
@@ -544,7 +544,11 @@ class _SavingsProgressScreenState extends State<SavingsProgressScreen> {
     );
   }
 
-  void _showEditGoalDialog(SavingsGoal goal) {
+  void _navigateToEditGoalScreen(){
+    Navigator.pushNamed(context, '/savings_edit');
+  }
+
+  /*void _showEditGoalDialog(SavingsGoal goal) {
     final TextEditingController nameController = TextEditingController(text: goal.name);
     final TextEditingController amountController = TextEditingController(text: goal.targetAmount.toString());
     final ValueNotifier<DateTime> targetDate = ValueNotifier(goal.targetDate);
@@ -634,7 +638,7 @@ class _SavingsProgressScreenState extends State<SavingsProgressScreen> {
         ],
       ),
     );
-  }
+  }*/
 
   void _showDeleteContributionDialog(Contribution contribution) {
     showDialog(

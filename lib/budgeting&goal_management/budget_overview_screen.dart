@@ -162,12 +162,20 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
   // ========== Main Build Method ==========
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: _buildAppBar(),
-      body: _buildBody(),
-      floatingActionButton: _buildCreateBudgetButton(),
-      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
-      bottomNavigationBar: _buildBottomNavigationBar(),
+    return PopScope(
+      canPop: false, // Prevent default pop
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop) {
+          Navigator.pushReplacementNamed(context, '/home');
+        }
+      },
+      child: Scaffold(
+        appBar: _buildAppBar(),
+        body: _buildBody(),
+        floatingActionButton: _buildCreateBudgetButton(),
+        floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+        bottomNavigationBar: _buildBottomNavigationBar(),
+      ),
     );
   }
 
@@ -918,7 +926,7 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
             icon: Icon(Icons.account_balance_wallet), label: 'Transactions'),
         BottomNavigationBarItem(icon: Icon(Icons.pie_chart), label: 'Budget'),
         BottomNavigationBarItem(icon: Icon(Icons.bar_chart), label: 'Reports'),
-        BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
+        BottomNavigationBarItem(icon: Icon(Icons.savings), label: 'Savings'),
       ],
     );
   }
@@ -926,18 +934,14 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
   // ========== Navigation Methods ==========
   void _handleBottomNavigationTap(int index) {
     if (index == 0) {
-      Navigator.pushNamed(context, '/home');
-    }
-    else if (index == 1) {
-      Navigator.pushNamed(context, '/transactions');
-    }
-    else if (index == 3) {
-      Navigator.pushNamed(context, '/reports_overview');
-    }
-    else if (index == 4) {
-      Navigator.pushNamed(context, '/profile');
-    }
-    else {
+      Navigator.pushReplacementNamed(context, '/home');
+    } else if (index == 1) {
+      Navigator.pushReplacementNamed(context, '/transactions');
+    } else if (index == 3) {
+      Navigator.pushReplacementNamed(context, '/reports_overview');
+    } else if (index == 4) {
+      Navigator.pushReplacementNamed(context, '/savings_goal');
+    } else {
       setState(() => _currentIndex = index);
     }
   }

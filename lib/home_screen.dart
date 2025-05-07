@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:mobile_app_assignment/budgeting&goal_management/budget_overview_screen.dart';
 import 'package:mobile_app_assignment/expense&income_tracking/transactions_screen.dart';
 import 'package:mobile_app_assignment/reports&analytics/reports_overview_screen.dart';
-import 'package:mobile_app_assignment/user_management&security/profile_management_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -20,69 +19,67 @@ class HomeScreenState extends State<HomeScreen> {
     TransactionsScreen(),
     BudgetOverviewScreen(),
     ReportsOverviewScreen(),
-    ProfileManagementScreen(),
   ];
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('Clarity Finance'),
-        automaticallyImplyLeading: false,
-        actions: [
-          IconButton(
-            icon: Icon(Icons.settings),
-            onPressed: () {
-              Navigator.pushNamed(context, '/settings');
-            },
-          ),
-        ],
-      ),
-      body: _screens[_currentIndex],
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _currentIndex,
-        onTap: (index) {
-          if (index == 1) { // 1 is for Transaction tab
-            Navigator.pushNamed(context, '/transactions');
-          }
-          else if (index == 2) { // 2 is for Budget tab
-            Navigator.pushNamed(context, '/budget_overview');
-          }
-          else if (index == 3) { // 3 is for Report tab
-            Navigator.pushNamed(context, '/reports_overview');
-          }
-          else if (index == 4) { // 4 is for User Profile tab
-            Navigator.pushNamed(context, '/profile');
-          }
-          else {
-            setState(() {
-              _currentIndex = index;
-            });
-          }
-        },
-        type: BottomNavigationBarType.fixed,
-        items: [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.home),
-            label: 'Home',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.account_balance_wallet),
-            label: 'Transactions',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.pie_chart),
-            label: 'Budget',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.bar_chart),
-            label: 'Reports',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.person),
-            label: 'Profile',
-          ),
-        ],
+    return PopScope(
+      canPop: true, // Allow default pop to exit the app
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text('Clarity Finance'),
+          automaticallyImplyLeading: false,
+          actions: [
+            IconButton(
+              icon: Icon(Icons.settings),
+              onPressed: () {
+                Navigator.pushNamed(context, '/settings');
+              },
+            ),
+          ],
+        ),
+        body: _screens[_currentIndex],
+        bottomNavigationBar: BottomNavigationBar(
+          currentIndex: _currentIndex,
+          onTap: (index) {
+            if (index == 1) {
+              Navigator.pushReplacementNamed(context, '/transactions');
+            } else if (index == 2) {
+              Navigator.pushReplacementNamed(context, '/budget_overview');
+            } else if (index == 3) {
+              Navigator.pushReplacementNamed(context, '/reports_overview');
+            } else if (index == 4) {
+              Navigator.pushReplacementNamed(context, '/savings_goal');
+            } else {
+              setState(() {
+                _currentIndex = index;
+              });
+            }
+          },
+          type: BottomNavigationBarType.fixed,
+          items: [
+            BottomNavigationBarItem(
+              icon: Icon(Icons.home),
+              label: 'Home',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.account_balance_wallet),
+              label: 'Transactions',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.pie_chart),
+              label: 'Budget',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.bar_chart),
+              label: 'Reports',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.savings), 
+              label: 'Savings',
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -14,8 +14,6 @@ class ProfileManagementScreen extends StatefulWidget {
 }
 
 class ProfileManagementScreenState extends State<ProfileManagementScreen> {
-  int _currentIndex = 4;
-
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _phoneController = TextEditingController();
@@ -313,43 +311,46 @@ class ProfileManagementScreenState extends State<ProfileManagementScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Profile Management'),
-        automaticallyImplyLeading: false,
-        actions: [
-          IconButton(
-            icon: Icon(_isEditing ? Icons.check : Icons.edit),
-            onPressed: () {
-              if (_isEditing) {
-                _saveChanges(); // Let _saveChanges handle the state change
-              } else {
-                setState(() => _isEditing = true); // Only enter edit mode here
-              }
-            },
-          )
-        ],
-      ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildProfileHeader(),
-                  const SizedBox(height: 24),
-                  _buildPersonalInfoSection(),
-                  const SizedBox(height: 24),
-                  _buildPreferencesSection(),
-                  const SizedBox(height: 24),
-                  _buildDataSection(),
-                  const SizedBox(height: 24),
-                  _buildLogoutButton(),
-                ],
+    return PopScope(
+      canPop: true, // Allow default pop to return to Settings
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Profile Management'),
+          // Remove automaticallyImplyLeading: false to enable default back button
+          actions: [
+            IconButton(
+              icon: Icon(_isEditing ? Icons.check : Icons.edit),
+              onPressed: () {
+                if (_isEditing) {
+                  _saveChanges();
+                } else {
+                  setState(() => _isEditing = true);
+                }
+              },
+            )
+          ],
+        ),
+        body: _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : SingleChildScrollView(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildProfileHeader(),
+                    const SizedBox(height: 24),
+                    _buildPersonalInfoSection(),
+                    const SizedBox(height: 24),
+                    _buildPreferencesSection(),
+                    const SizedBox(height: 24),
+                    _buildDataSection(),
+                    const SizedBox(height: 24),
+                    _buildLogoutButton(),
+                  ],
+                ),
               ),
-            ),
-      bottomNavigationBar: _buildBottomNavigationBar(),
+        // No bottomNavigationBar
+      ),
     );
   }
 
@@ -820,42 +821,6 @@ class ProfileManagementScreenState extends State<ProfileManagementScreen> {
           SnackBar(content: Text('Error: ${e.toString()}')),
         );
       }
-    }
-  }
-
-  // ========== Bottom Navigation ==========
-  BottomNavigationBar _buildBottomNavigationBar() {
-    return BottomNavigationBar(
-      currentIndex: _currentIndex,
-      onTap: _handleBottomNavigationTap,
-      type: BottomNavigationBarType.fixed,
-      items: const [
-        BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
-        BottomNavigationBarItem(
-            icon: Icon(Icons.account_balance_wallet), label: 'Transactions'),
-        BottomNavigationBarItem(icon: Icon(Icons.pie_chart), label: 'Budget'),
-        BottomNavigationBarItem(icon: Icon(Icons.bar_chart), label: 'Reports'),
-        BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
-      ],
-    );
-  }
-
-  // ========== Navigation Methods ==========
-  void _handleBottomNavigationTap(int index) {
-    if (index == 0) {
-      Navigator.pushNamed(context, '/home');
-    }
-    else if (index == 1) {
-      Navigator.pushNamed(context, '/transactions');
-    }
-    else if (index == 2) {
-      Navigator.pushNamed(context, '/budget_overview');
-    }
-    else if (index == 3) {
-      Navigator.pushNamed(context, '/reports_overview');
-    }
-    else {
-      setState(() => _currentIndex = index);
     }
   }
 }

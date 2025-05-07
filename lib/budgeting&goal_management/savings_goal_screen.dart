@@ -10,6 +10,7 @@ class SavingsGoalScreen extends StatefulWidget {
 }
 
 class _SavingsGoalScreenState extends State<SavingsGoalScreen> {
+  int _currentIndex = 4;
   // Sample data for savings goals
   final List<SavingsGoal> _goals = [
     SavingsGoal(
@@ -70,70 +71,73 @@ class _SavingsGoalScreenState extends State<SavingsGoalScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Savings Goals'),
-        actions: [
-          PopupMenuButton<String>(
-            icon: Icon(Icons.more_vert),
-            onSelected: (String value) {
-              _handleMenuSelection(value);
-            },
-            itemBuilder: (BuildContext context) =>
-            [
-              PopupMenuItem<String>(
-                value: 'settings',
-                child: ListTile(
-                  leading: Icon(Icons.settings, size: 20),
-                  title: Text('Settings'),
-                  dense: true,
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop) {
+          Navigator.pushReplacementNamed(context, '/home');
+        }
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Savings Goals'),
+          actions: [
+            PopupMenuButton<String>(
+              icon: Icon(Icons.more_vert),
+              onSelected: (String value) {
+                _handleMenuSelection(value);
+              },
+              itemBuilder: (BuildContext context) => [
+                PopupMenuItem<String>(
+                  value: 'settings',
+                  child: ListTile(
+                    leading: Icon(Icons.settings, size: 20),
+                    title: Text('Settings'),
+                    dense: true,
+                  ),
                 ),
-              ),
-              PopupMenuItem<String>(
-                  value: 'search',
-                  child: ListTile(
-                    leading: Icon(
-                      /*_isSearchVisible ? Icons.search_off : */Icons.search,
-                      size: 20,
-                    ),
-                    title: Text(/*_isSearchVisible ? 'Cancel Searching' : */'Search'),
-                    dense: true,
-                  )
-              ),
-              PopupMenuItem<String>(
-                  value: 'sort',
-                  child: ListTile(
-                    leading: Icon(Icons.sort, size: 20),
-                    title: Text('Sort by'),
-                    dense: true,
-                  )
-              ),
-              PopupMenuItem<String>(
-                  value: 'filter',
-                  child: ListTile(
-                    leading: Icon(Icons.filter_alt_rounded, size: 20),
-                    title: Text('Filter'),
-                    dense: true,
-                  )
-              ),
-              PopupMenuItem<String>(
-                  value: 'history',
-                  child: ListTile(
-                    leading: Icon(Icons.history, size: 20),
-                    title: Text('View History'),
-                    dense: true,
-                  )
-              ),
-            ],
-          ),
-        ],
-      ),
-      body: _goals.isEmpty
-          ? _buildEmptyState()
-          : _buildGoalsList(),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _navigateToAddGoalScreen,
-        child: const Icon(Icons.add),
+                PopupMenuItem<String>(
+                    value: 'search',
+                    child: ListTile(
+                      leading: Icon(
+                        /*_isSearchVisible ? Icons.search_off : */ Icons.search,
+                        size: 20,
+                      ),
+                      title: Text(
+                          /*_isSearchVisible ? 'Cancel Searching' : */ 'Search'),
+                      dense: true,
+                    )),
+                PopupMenuItem<String>(
+                    value: 'sort',
+                    child: ListTile(
+                      leading: Icon(Icons.sort, size: 20),
+                      title: Text('Sort by'),
+                      dense: true,
+                    )),
+                PopupMenuItem<String>(
+                    value: 'filter',
+                    child: ListTile(
+                      leading: Icon(Icons.filter_alt_rounded, size: 20),
+                      title: Text('Filter'),
+                      dense: true,
+                    )),
+                PopupMenuItem<String>(
+                    value: 'history',
+                    child: ListTile(
+                      leading: Icon(Icons.history, size: 20),
+                      title: Text('View History'),
+                      dense: true,
+                    )),
+              ],
+            ),
+          ],
+        ),
+        body: _goals.isEmpty ? _buildEmptyState() : _buildGoalsList(),
+        floatingActionButton: FloatingActionButton(
+          onPressed: _navigateToAddGoalScreen,
+          child: const Icon(Icons.add),
+        ),
+        bottomNavigationBar: _buildBottomNavigationBar(),
       ),
     );
   }
@@ -185,7 +189,7 @@ class _SavingsGoalScreenState extends State<SavingsGoalScreen> {
         final progress = goal.savedAmount / goal.targetAmount;
         final remainingAmount = goal.targetAmount - goal.savedAmount;
         final daysRemaining = goal.targetDate.difference(DateTime.now()).inDays;
-        
+
         return Card(
           margin: const EdgeInsets.only(bottom: 16),
           shape: RoundedRectangleBorder(
@@ -195,7 +199,7 @@ class _SavingsGoalScreenState extends State<SavingsGoalScreen> {
           child: InkWell(
             onTap: () {
               Navigator.pushNamed(
-                context, 
+                context,
                 '/savings_progress',
                 arguments: goal,
               );
@@ -259,7 +263,8 @@ class _SavingsGoalScreenState extends State<SavingsGoalScreen> {
                             style: TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.w500,
-                              color: progress > 0.7 ? Colors.green : Colors.blue,
+                              color:
+                                  progress > 0.7 ? Colors.green : Colors.blue,
                             ),
                           ),
                         ],
@@ -302,7 +307,9 @@ class _SavingsGoalScreenState extends State<SavingsGoalScreen> {
                         Text(
                           '$daysRemaining days remaining',
                           style: TextStyle(
-                            color: daysRemaining < 30 ? Colors.orange : Colors.grey[600],
+                            color: daysRemaining < 30
+                                ? Colors.orange
+                                : Colors.grey[600],
                           ),
                         )
                       else
@@ -317,7 +324,8 @@ class _SavingsGoalScreenState extends State<SavingsGoalScreen> {
                         style: ElevatedButton.styleFrom(
                           backgroundColor: goal.color,
                           foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 8),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(8),
                           ),
@@ -335,11 +343,11 @@ class _SavingsGoalScreenState extends State<SavingsGoalScreen> {
     );
   }
 
-  void _navigateToAddGoalScreen(){
+  void _navigateToAddGoalScreen() {
     Navigator.pushNamed(context, '/savings_add');
   }
 
-  void _navigateToSavingsGoalHistoryScreen(){
+  void _navigateToSavingsGoalHistoryScreen() {
     Navigator.pushNamed(context, '/savings_history');
   }
 
@@ -562,7 +570,7 @@ class _SavingsGoalScreenState extends State<SavingsGoalScreen> {
 
   void _showAddContributionDialog(SavingsGoal goal) {
     final TextEditingController amountController = TextEditingController();
-    
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -583,7 +591,8 @@ class _SavingsGoalScreenState extends State<SavingsGoalScreen> {
                 border: OutlineInputBorder(),
                 prefixText: 'RM ',
               ),
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
               inputFormatters: [
                 FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,2}')),
               ],
@@ -617,11 +626,12 @@ class _SavingsGoalScreenState extends State<SavingsGoalScreen> {
                     }
                   });
                   Navigator.pop(context);
-                  
+
                   // Show success message
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
-                      content: Text('RM ${amount.toStringAsFixed(2)} added to ${goal.name}'),
+                      content: Text(
+                          'RM ${amount.toStringAsFixed(2)} added to ${goal.name}'),
                       backgroundColor: Colors.green,
                     ),
                   );
@@ -637,6 +647,36 @@ class _SavingsGoalScreenState extends State<SavingsGoalScreen> {
         ],
       ),
     );
+  }
+
+  BottomNavigationBar _buildBottomNavigationBar() {
+    return BottomNavigationBar(
+      currentIndex: _currentIndex,
+      onTap: _handleBottomNavigationTap,
+      type: BottomNavigationBarType.fixed,
+      items: const [
+        BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
+        BottomNavigationBarItem(
+            icon: Icon(Icons.account_balance_wallet), label: 'Transactions'),
+        BottomNavigationBarItem(icon: Icon(Icons.pie_chart), label: 'Budget'),
+        BottomNavigationBarItem(icon: Icon(Icons.bar_chart), label: 'Reports'),
+        BottomNavigationBarItem(icon: Icon(Icons.savings), label: 'Savings'),
+      ],
+    );
+  }
+
+  void _handleBottomNavigationTap(int index) {
+    if (index == 0) {
+      Navigator.pushReplacementNamed(context, '/home');
+    } else if (index == 1) {
+      Navigator.pushReplacementNamed(context, '/transactions');
+    } else if (index == 2) {
+      Navigator.pushReplacementNamed(context, '/budget_overview');
+    } else if (index == 3) {
+      Navigator.pushReplacementNamed(context, '/reports_overview');
+    } else {
+      setState(() => _currentIndex = index);
+    }
   }
 }
 

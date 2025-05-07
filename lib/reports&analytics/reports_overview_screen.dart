@@ -12,23 +12,31 @@ class _ReportsOverviewScreenState extends State<ReportsOverviewScreen>{
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('Reports & Analytics'),
-        automaticallyImplyLeading: false,
-      ),
-      body: SingleChildScrollView(
-        padding: EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildReportsSummaryCard(context),
-            SizedBox(height: 20),
-            _buildReportsCategories(context),
-          ],
+    return PopScope(
+      canPop: false, // Prevent default pop
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop) {
+          Navigator.pushReplacementNamed(context, '/home');
+        }
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text('Reports & Analytics'),
+          automaticallyImplyLeading: false,
         ),
+        body: SingleChildScrollView(
+          padding: EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildReportsSummaryCard(context),
+              SizedBox(height: 20),
+              _buildReportsCategories(context),
+            ],
+          ),
+        ),
+        bottomNavigationBar: _buildBottomNavigationBar(),
       ),
-      bottomNavigationBar: _buildBottomNavigationBar(),
     );
   }
 
@@ -206,7 +214,7 @@ class _ReportsOverviewScreenState extends State<ReportsOverviewScreen>{
             icon: Icon(Icons.account_balance_wallet), label: 'Transactions'),
         BottomNavigationBarItem(icon: Icon(Icons.pie_chart), label: 'Budget'),
         BottomNavigationBarItem(icon: Icon(Icons.bar_chart), label: 'Reports'),
-        BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
+        BottomNavigationBarItem(icon: Icon(Icons.savings), label: 'Savings'),
       ],
     );
   }
@@ -214,18 +222,14 @@ class _ReportsOverviewScreenState extends State<ReportsOverviewScreen>{
   // ========== Navigation Methods ==========
   void _handleBottomNavigationTap(int index) {
     if (index == 0) {
-      Navigator.pushNamed(context, '/home');
-    }
-    else if (index == 1) {
-      Navigator.pushNamed(context, '/transactions');
-    }
-    else if (index == 2) {
-      Navigator.pushNamed(context, '/budget_overview');
-    }
-    else if (index == 4) {
-      Navigator.pushNamed(context, '/profile');
-    }
-    else {
+      Navigator.pushReplacementNamed(context, '/home');
+    } else if (index == 1) {
+      Navigator.pushReplacementNamed(context, '/transactions');
+    } else if (index == 2) {
+      Navigator.pushReplacementNamed(context, '/budget_overview');
+    } else if (index == 4) {
+      Navigator.pushReplacementNamed(context, '/savings_goal');
+    } else {
       setState(() => _currentIndex = index);
     }
   }

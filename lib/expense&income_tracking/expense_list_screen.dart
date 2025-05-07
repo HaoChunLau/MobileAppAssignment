@@ -67,6 +67,7 @@ class ExpenseListScreenState extends State<ExpenseListScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text('Expenses - ${DateFormat('MMM yyyy').format(_selectedDate)}'),
+        automaticallyImplyLeading: false, // Remove back arrow
         actions: [
           IconButton(
             icon: const Icon(Icons.calendar_today),

@@ -66,6 +66,7 @@ class IncomeListScreenState extends State<IncomeListScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text('Income - ${DateFormat('MMM yyyy').format(_selectedDate)}'),
+        automaticallyImplyLeading: false, // Remove back arrow
         actions: [
           IconButton(
             icon: const Icon(Icons.calendar_today),

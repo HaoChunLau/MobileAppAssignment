@@ -1,8 +1,6 @@
-import 'dart:math';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-import 'package:mobile_app_assignment/category_utils.dart';
 
 enum DurationCategory { daily, weekly, monthly, custom; @override String toString() => name; }
 enum Status { active, completed, failed, stopped, deleted; @override String toString() => name; }

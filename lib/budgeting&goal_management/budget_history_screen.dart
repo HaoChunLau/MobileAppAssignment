@@ -12,17 +12,17 @@ class BudgetHistoryScreen extends StatefulWidget {
 class _BudgetHistoryScreenState extends State<BudgetHistoryScreen> {
   // Search properties
   final TextEditingController _searchController = TextEditingController();
-  String _searchTerm = '';
-  bool _isSearchVisible = false;
-  SortingOptions _sortingOptions = const SortingOptions();
+  final String _searchTerm = '';
+  final bool _isSearchVisible = false;
+  final SortingOptions _sortingOptions = const SortingOptions();
 
   // ========== Filter Properties ==========
-  List<String> _selectedCategories = [];
-  double _minAmount = 0;
-  double _maxAmount = double.infinity;
+  final List<String> _selectedCategories = [];
+  final double _minAmount = 0;
+  final double _maxAmount = double.infinity;
   DateTime? _filterStartDate;
   DateTime? _filterEndDate;
-  bool _isFilterActive = false;
+  final bool _isFilterActive = false;
   final TextEditingController _minAmountController = TextEditingController();
   final TextEditingController _maxAmountController = TextEditingController();
   String? _minAmountError;

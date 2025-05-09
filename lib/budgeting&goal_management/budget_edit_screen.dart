@@ -652,13 +652,13 @@ class _BudgetEditScreenState extends State<BudgetEditScreen> {
         children: [
           FloatingActionButton(
             onPressed: _confirmDeleteBudget,
-            child: Icon(Icons.delete_rounded, color: Colors.white),
             backgroundColor: Colors.red,
+            child: Icon(Icons.delete_rounded, color: Colors.white),
           ),
           FloatingActionButton(
             onPressed: _saveBudget,
-            child: Icon(Icons.upload_sharp, color: Colors.white),
             backgroundColor: Colors.green,
+            child: Icon(Icons.upload_sharp, color: Colors.white),
           ),
         ],
       ),

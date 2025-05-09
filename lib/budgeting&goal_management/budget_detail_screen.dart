@@ -34,7 +34,7 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
   late DateTime _selectedDay; //for calendar
   DateTime _startDate = DateTime.now(); // Default to current date
   late DateTime _endDate;
-  DateTime _stoppedDate = DateTime.now();
+  final DateTime _stoppedDate = DateTime.now();
   final DateTime _selectedDate = DateTime.now();
   String _status = '';
   late DurationCategory _selectedDuration;

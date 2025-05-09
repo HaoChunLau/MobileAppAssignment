@@ -6,7 +6,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 import 'package:mobile_app_assignment/category_utils.dart';
 import 'package:mobile_app_assignment/models/budget_model.dart';
-import '../models/budget_model.dart';
 
 class BudgetAddScreen extends StatefulWidget {
   const BudgetAddScreen({super.key});

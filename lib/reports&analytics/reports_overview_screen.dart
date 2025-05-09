@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:mobile_app_assignment/models/transaction_model.dart';
 
 class ReportsOverviewScreen extends StatefulWidget {
   const ReportsOverviewScreen({super.key});
@@ -7,8 +10,68 @@ class ReportsOverviewScreen extends StatefulWidget {
   State<ReportsOverviewScreen> createState() => _ReportsOverviewScreenState();
 }
 
-class _ReportsOverviewScreenState extends State<ReportsOverviewScreen>{
+class _ReportsOverviewScreenState extends State<ReportsOverviewScreen> {
   int _currentIndex = 3;
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  double _income = 0.0;
+  double _expense = 0.0;
+  double _savings = 0.0;
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchMonthlySummary();
+  }
+
+  Future<void> _fetchMonthlySummary() async {
+    final userId = _auth.currentUser?.uid;
+    if (userId == null) {
+      setState(() {
+        _isLoading = false;
+      });
+      return;
+    }
+
+    final now = DateTime.now();
+    final firstDayOfMonth = DateTime(now.year, now.month, 1);
+    final lastDayOfMonth = DateTime(now.year, now.month + 1, 0);
+
+    try {
+      final querySnapshot = await _firestore
+          .collection('transactions')
+          .where('userId', isEqualTo: userId)
+          .where('date',
+              isGreaterThanOrEqualTo: Timestamp.fromDate(firstDayOfMonth))
+          .where('date',
+              isLessThanOrEqualTo: Timestamp.fromDate(lastDayOfMonth))
+          .get();
+
+      double totalIncome = 0.0;
+      double totalExpense = 0.0;
+
+      for (var doc in querySnapshot.docs) {
+        final transaction = TransactionModel.fromFirestore(doc);
+        if (transaction.isExpense) {
+          totalExpense += transaction.amount;
+        } else {
+          totalIncome += transaction.amount;
+        }
+      }
+
+      setState(() {
+        _income = totalIncome;
+        _expense = totalExpense;
+        _savings = totalIncome - totalExpense;
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -48,37 +111,42 @@ class _ReportsOverviewScreenState extends State<ReportsOverviewScreen>{
       ),
       child: Padding(
         padding: EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'This Month\'s Summary',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
+        child: _isLoading
+            ? Center(child: CircularProgressIndicator())
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'This Month\'s Summary',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  SizedBox(height: 16),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      _buildSummaryItem(
+                          'Income', 'RM ${_income.toStringAsFixed(2)}', Colors.green),
+                      _buildSummaryItem(
+                          'Expense', 'RM ${_expense.toStringAsFixed(2)}', Colors.red),
+                      _buildSummaryItem(
+                          'Savings', 'RM ${_savings.toStringAsFixed(2)}', Colors.blue),
+                    ],
+                  ),
+                  SizedBox(height: 16),
+                  ElevatedButton(
+                    onPressed: () {
+                      Navigator.pushNamed(context, '/monthly_summary');
+                    },
+                    style: ElevatedButton.styleFrom(
+                      minimumSize: Size(double.infinity, 40),
+                    ),
+                    child: Text('View Detailed Monthly Report'),
+                  ),
+                ],
               ),
-            ),
-            SizedBox(height: 16),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                _buildSummaryItem('Income', 'RM 5,240.00', Colors.green),
-                _buildSummaryItem('Expense', 'RM 1,659.58', Colors.red),
-                _buildSummaryItem('Savings', 'RM 3,580.42', Colors.blue),
-              ],
-            ),
-            SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.pushNamed(context, '/monthly_summary');
-              },
-              style: ElevatedButton.styleFrom(
-                minimumSize: Size(double.infinity, 40),
-              ),
-              child: Text('View Detailed Monthly Report'),
-            ),
-          ],
-        ),
       ),
     );
   }

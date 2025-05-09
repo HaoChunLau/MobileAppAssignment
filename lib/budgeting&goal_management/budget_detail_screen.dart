@@ -4,9 +4,9 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:mobile_app_assignment/category_utils.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:mobile_app_assignment/models/budget_model.dart';
+import 'package:mobile_app_assignment/models/transaction_model.dart';
 import 'package:table_calendar/table_calendar.dart';
-import '../models/budget_model.dart';
-import '../models/transaction_model.dart';
 
 class BudgetDetailScreen extends StatefulWidget {
   const BudgetDetailScreen({super.key});

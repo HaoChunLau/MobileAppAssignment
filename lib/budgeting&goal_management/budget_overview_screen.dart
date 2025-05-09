@@ -1,5 +1,4 @@
 import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -9,8 +8,7 @@ import 'package:mobile_app_assignment/category_utils.dart';
 import 'package:mobile_app_assignment/models/budget_model.dart';
 import 'package:mobile_app_assignment/models/transaction_model.dart';
 import 'package:month_picker_dialog/month_picker_dialog.dart';
-
-import '../sorting_utils.dart';
+import 'package:mobile_app_assignment/sorting_utils.dart';
 
 class BudgetOverviewScreen extends StatefulWidget {
   const BudgetOverviewScreen({super.key});
@@ -21,7 +19,6 @@ class BudgetOverviewScreen extends StatefulWidget {
 
 class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
     with SingleTickerProviderStateMixin {
-
   // ========== Constants and Properties ==========
   static const _budgetTabIndex = 2;
 
@@ -29,6 +26,8 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
   final FirebaseAuth _auth = FirebaseAuth.instance;
   DateTime _selectedDate = DateTime.now();
   int _currentIndex = _budgetTabIndex; // Make sure index matches Budget tab
+
+  BudgetModel? budgetPassing;
 
   // Tab bar control
   late TabController _tabController;
@@ -67,6 +66,8 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
       });
     });
 
+    //_loadBudgetData();
+
     // Check status every hour
     Timer.periodic(Duration(hours: 1), (timer) {
       _checkAndUpdateAllBudgets();
@@ -99,6 +100,7 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
       final previousStatus = budget.status;
 
       budget.updateStatus(currentDate: _selectedDate);
+      updateCurrentSpent(budget);
 
       if (budget.status != previousStatus) {
         batch.update(doc.reference, {'status': budget.status.name});
@@ -106,28 +108,6 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
     }
 
     await batch.commit();
-  }
-
-  void _updateCurrentSpent() async{
-    final budgets = await _firestore
-        .collection('budgets')
-        .where('userId', isEqualTo: _auth.currentUser?.uid)
-        .where('status', isEqualTo: 'active')
-        .get();
-
-    final batch = _firestore.batch();
-    for (var doc in budgets.docs) {
-      final budget = BudgetModel.fromFirestore(doc);
-      final previousStatus = budget.status;
-
-      budget.updateStatus(currentDate: _selectedDate);
-
-      double currentSpent = 0.00;
-
-      if (budget.status != previousStatus) {
-        batch.update(doc.reference, {'status': budget.status.name});
-      }
-    }
   }
 
   // ========= Popup Windows for more action ========
@@ -369,13 +349,39 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
   // ========== Main Build Method ==========
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: _buildAppBar(),
-      body: _buildBody(),
-      floatingActionButton: _buildCreateBudgetButton(),
-      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
-      bottomNavigationBar: _buildBottomNavigationBar(),
+    return PopScope(
+      canPop: false, // Prevent default pop
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop) {
+          Navigator.pushReplacementNamed(context, '/home');
+        }
+      },
+      child: Scaffold(
+        appBar: _buildAppBar(),
+        body: _buildBody(),
+        floatingActionButton: _buildCreateBudgetButton(),
+        floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+        bottomNavigationBar: _buildBottomNavigationBar(),
+      ),
     );
+  }
+
+  // Define a method to get the budget stream based on the selected date
+  Stream<QuerySnapshot> getBudgetStream(DateTime selectedDate, {List<String>? statuses}) {
+    // Start building the query
+    var query = _firestore.collection('budgets')
+        .where('userId', isEqualTo: _auth.currentUser ?.uid)
+        .where('startDate', isLessThanOrEqualTo: Timestamp.fromDate(
+        DateTime(selectedDate.year, selectedDate.month + 1, 0)))
+        .where('endDate', isGreaterThanOrEqualTo: Timestamp.fromDate(
+        DateTime(selectedDate.year, selectedDate.month, 1)));
+
+    // If statuses are provided, add the whereIn clause
+    if (statuses != null && statuses.isNotEmpty) {
+      query = query.where('status', whereIn: statuses);
+    }
+
+    return query.snapshots();
   }
 
   // ========== App Bar ==========
@@ -492,22 +498,17 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
 
   //========= Tab control ========
   Widget _buildAllBudgetsTab() {
+    List<String> _selectedStatuses = ['active', 'completed', 'failed', 'stopped', 'deleted'];
+
     return StreamBuilder<QuerySnapshot>(
-      stream: _firestore
-          .collection('budgets')
-          .where('userId', isEqualTo: _auth.currentUser?.uid)
-          .where('status', whereIn: ['active', 'completed', 'failed', 'stopped', 'deleted'])
-          .where('startDate', isLessThanOrEqualTo: Timestamp.fromDate(
-          DateTime(_selectedDate.year, _selectedDate.month + 1, 0)))
-          .where('endDate', isGreaterThanOrEqualTo: Timestamp.fromDate(DateTime(_selectedDate.year, _selectedDate.month, 1)))
-          .snapshots(),
+      stream: getBudgetStream(_selectedDate, statuses: _selectedStatuses),
       builder: (context, snapshot) {
         List<BudgetModel> budgets = (snapshot.data?.docs ?? [])
             .map((doc) {
-              var budget = BudgetModel.fromFirestore(doc);
-              budget.updateStatus(currentDate: _selectedDate);
-              return budget;
-            })
+          var budget = BudgetModel.fromFirestore(doc);
+          budget.updateStatus(currentDate: _selectedDate);
+          return budget;
+        })
             .where((budget) => _searchTerm.isEmpty ||
             budget.budgetName.toLowerCase().contains(
                 _searchTerm.toLowerCase()) ||
@@ -523,17 +524,9 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
   }
 
   Widget _buildActiveBudgetsTab() {
+    List<String> _selectedStatuses = ['active'];
     return StreamBuilder<QuerySnapshot>(
-      stream: _firestore
-          .collection('budgets')
-          .where('userId', isEqualTo: _auth.currentUser?.uid)
-          .where('status', whereIn: ['active'])
-          .where('startDate', isLessThanOrEqualTo:
-      Timestamp.fromDate(
-          DateTime(_selectedDate.year, _selectedDate.month + 1, 0)))
-          .where('endDate', isGreaterThanOrEqualTo:
-      Timestamp.fromDate(DateTime(_selectedDate.year, _selectedDate.month, 1)))
-          .snapshots(),
+      stream: getBudgetStream(_selectedDate, statuses: _selectedStatuses),
       builder: (context, snapshot) {
         // Filtered content for active budgets
         List<BudgetModel> activeBudgets = (snapshot.data?.docs ?? [])
@@ -554,17 +547,9 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
   }
 
   Widget _buildCompletedBudgetsTab() {
+    List<String> _selectedStatuses = ['completed'];
     return StreamBuilder<QuerySnapshot>(
-      stream: _firestore
-          .collection('budgets')
-          .where('userId', isEqualTo: _auth.currentUser?.uid)
-          .where('status', whereIn: ['completed'])
-          .where('startDate', isLessThanOrEqualTo:
-      Timestamp.fromDate(
-          DateTime(_selectedDate.year, _selectedDate.month + 1, 0)))
-          .where('endDate', isGreaterThanOrEqualTo:
-      Timestamp.fromDate(DateTime(_selectedDate.year, _selectedDate.month, 1)))
-          .snapshots(),
+      stream: getBudgetStream(_selectedDate, statuses: _selectedStatuses),
       builder: (context, snapshot) {
         // Filtered content for completed budgets
         List<BudgetModel> completedBudgets = (snapshot.data?.docs ?? [])
@@ -585,17 +570,9 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
   }
 
   Widget _buildFailedBudgetsTab() {
+    List<String> _selectedStatuses = ['failed'];
     return StreamBuilder<QuerySnapshot>(
-      stream: _firestore
-          .collection('budgets')
-          .where('userId', isEqualTo: _auth.currentUser?.uid)
-          .where('status', whereIn: ['failed'])
-          .where('startDate', isLessThanOrEqualTo:
-      Timestamp.fromDate(
-          DateTime(_selectedDate.year, _selectedDate.month + 1, 0)))
-          .where('endDate', isGreaterThanOrEqualTo:
-      Timestamp.fromDate(DateTime(_selectedDate.year, _selectedDate.month, 1)))
-          .snapshots(),
+      stream: getBudgetStream(_selectedDate, statuses: _selectedStatuses),
       builder: (context, snapshot) {
         // Filtered content for failed budgets
         List<BudgetModel> failedBudgets = (snapshot.data?.docs ?? [])
@@ -616,17 +593,10 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
   }
 
   Widget _buildStoppedBudgetsTab() {
+    List<String> _selectedStatuses = ['stopped'];
+
     return StreamBuilder<QuerySnapshot>(
-      stream: _firestore
-          .collection('budgets')
-          .where('userId', isEqualTo: _auth.currentUser?.uid)
-          .where('status', whereIn: ['stopped'])
-          .where('startDate', isLessThanOrEqualTo:
-      Timestamp.fromDate(
-          DateTime(_selectedDate.year, _selectedDate.month + 1, 0)))
-          .where('endDate', isGreaterThanOrEqualTo:
-      Timestamp.fromDate(DateTime(_selectedDate.year, _selectedDate.month, 1)))
-          .snapshots(),
+      stream: getBudgetStream(_selectedDate, statuses: _selectedStatuses),
       builder: (context, snapshot) {
         // Filtered content for stopped budgets
         List<BudgetModel> stoppedBudgets = (snapshot.data?.docs ?? [])
@@ -647,17 +617,9 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
   }
 
   Widget _buildDeletedBudgetsTab() {
+    List<String> _selectedStatuses = ['deleted'];
     return StreamBuilder<QuerySnapshot>(
-      stream: _firestore
-          .collection('budgets')
-          .where('userId', isEqualTo: _auth.currentUser?.uid)
-          .where('status', whereIn: ['deleted'])
-          .where('startDate', isLessThanOrEqualTo:
-      Timestamp.fromDate(
-          DateTime(_selectedDate.year, _selectedDate.month + 1, 0)))
-          .where('endDate', isGreaterThanOrEqualTo:
-      Timestamp.fromDate(DateTime(_selectedDate.year, _selectedDate.month, 1)))
-          .snapshots(),
+      stream: getBudgetStream(_selectedDate, statuses: _selectedStatuses),
       builder: (context, snapshot) {
         // Filtered content for active budgets
         List<BudgetModel> deletedBudgets = (snapshot.data?.docs ?? [])
@@ -764,26 +726,26 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
               mainAxisSize: MainAxisSize.min,
               children: [
                 if (_searchController.text.isNotEmpty)
-                GestureDetector(
-                  onTap: () {
-                    setState(() {
-                      _searchController.clear();
-                      _searchTerm = '';
-                    });
-                  },
-                  child: const Icon(Icons.arrow_back),
-                ),
+                  GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        _searchController.clear();
+                        _searchTerm = '';
+                      });
+                    },
+                    child: const Icon(Icons.arrow_back),
+                  ),
                 if (_searchController.text.isEmpty)
-                GestureDetector(
-                  onTap: () {
-                    setState(() {
-                      _isSearchVisible = false;
-                      _searchController.clear();
-                      _searchTerm = '';
-                    });
-                  },
-                  child: const Icon(Icons.close),
-                ),
+                  GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        _isSearchVisible = false;
+                        _searchController.clear();
+                        _searchTerm = '';
+                      });
+                    },
+                    child: const Icon(Icons.close),
+                  ),
               ],
             ),
           ),
@@ -835,20 +797,20 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
         });
       },
       child: Row(
-        children: [
-          Text(
-            'Categories',
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: 25,
+          children: [
+            Text(
+              'Categories',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 25,
+              ),
             ),
-          ),
-          Icon(
-            _expandedSections['categories']!
-                ? Icons.expand_less
-                : Icons.expand_more,
-          ),
-        ]
+            Icon(
+              _expandedSections['categories']!
+                  ? Icons.expand_less
+                  : Icons.expand_more,
+            ),
+          ]
       ),
     );
   }
@@ -1154,9 +1116,9 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
         final expenses = transactionSnapshot.data!.docs
             .map((doc) => TransactionModel.fromFirestore(doc))
             .where((txn) =>
-              budgetCategories.contains(txn.category) &&
-              txn.date.isAfter(startDate.subtract(const Duration(seconds: 1))) &&
-              txn.date.isBefore(endDate.add(const Duration(seconds: 1))))
+        budgetCategories.contains(txn.category) &&
+            txn.date.isAfter(startDate.subtract(const Duration(seconds: 1))) &&
+            txn.date.isBefore(endDate.add(const Duration(seconds: 1))))
             .toList();
 
         final spendingData = _calculateSpendingData(expenses, budgets);
@@ -1219,7 +1181,40 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
     );
   }
 
-    // ========== UI Components ==========
+  Future<void> updateCurrentSpent(BudgetModel budget) async {
+    // Get reference to the budget document
+    final budgetDocRef = _firestore.collection('budgets').doc(budget.budgetId);
+
+    final transactions = await _firestore
+        .collection('transactions')
+        .where('userId', isEqualTo: _auth.currentUser?.uid)
+        .where('category', isEqualTo: budget.budgetCategory)
+        .where('isExpense', isEqualTo: true)
+        .where('date', isGreaterThanOrEqualTo: Timestamp.fromDate(budget.startDate))
+        .where('date', isLessThanOrEqualTo: Timestamp.fromDate(budget.endDate))
+        .get();
+
+    final batch = _firestore.batch();
+
+    double currentSpent = transactions.docs.fold(0.0, (accumulatedTotal, doc) {
+      final amount = (doc.data()['amount'] as num).toDouble();
+      return accumulatedTotal + amount;
+    });
+
+    // Update the budget document with new currentSpent value
+    batch.update(budgetDocRef, {
+      'currentSpent': currentSpent,
+    });
+
+    // Commit the batch
+    await batch.commit();
+
+    // Update the budget's status
+    budget.currentSpent = currentSpent;
+    budget.updateStatus();
+  }
+
+  // ========== UI Components ==========
   Widget _buildErrorState(dynamic error) {
     return Center(child: Text('Error: $error'));
   }
@@ -1375,6 +1370,7 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
     final isFailed = progress >= 1.0;
     final categoryColor = CategoryUtils.getCategoryColor(budget.budgetCategory);
 
+    updateCurrentSpent(budget);
     budget.updateStatus();
 
     return GestureDetector(
@@ -1712,7 +1708,7 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
             icon: Icon(Icons.account_balance_wallet), label: 'Transactions'),
         BottomNavigationBarItem(icon: Icon(Icons.pie_chart), label: 'Budget'),
         BottomNavigationBarItem(icon: Icon(Icons.bar_chart), label: 'Reports'),
-        BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
+        BottomNavigationBarItem(icon: Icon(Icons.savings), label: 'Savings'),
       ],
     );
   }
@@ -1729,7 +1725,7 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
       Navigator.pushNamed(context, '/reports_overview');
     }
     else if (index == 4) {
-      Navigator.pushNamed(context, '/profile');
+      Navigator.pushNamed(context, '/savings_goal');
     }
     else {
       setState(() => _currentIndex = index);
@@ -1752,8 +1748,8 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
       context,
       '/budget_detail',
       arguments: {
-      'budget': budget,
-      'selectedDate': _selectedDate,
+        'budget': budget,
+        'selectedDate': _selectedDate,
       },
     );
   }

@@ -5,8 +5,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
-import '../category_utils.dart';
-import '../models/budget_model.dart';
+import 'package:mobile_app_assignment/category_utils.dart';
+import 'package:mobile_app_assignment/models/budget_model.dart';
 
 class BudgetEditScreen extends StatefulWidget {
   const BudgetEditScreen({super.key});

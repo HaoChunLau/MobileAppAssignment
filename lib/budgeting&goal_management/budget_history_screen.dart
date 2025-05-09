@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
-
-import '../sorting_utils.dart';
+import 'package:mobile_app_assignment/sorting_utils.dart';
 
 class BudgetHistoryScreen extends StatefulWidget {
   const BudgetHistoryScreen({super.key});

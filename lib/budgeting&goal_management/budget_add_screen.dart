@@ -1,8 +1,12 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:intl/intl.dart';
 import 'package:mobile_app_assignment/category_utils.dart';
+import 'package:mobile_app_assignment/models/budget_model.dart';
+import '../models/budget_model.dart';
 
 class BudgetAddScreen extends StatefulWidget {
   const BudgetAddScreen({super.key});
@@ -16,6 +20,9 @@ class _BudgetAddScreenState extends State<BudgetAddScreen> {
   final _formKey = GlobalKey<FormState>();    //for validation
   final TextEditingController _categoryController = TextEditingController();
   final TextEditingController _budgetNameController = TextEditingController();
+  final TextEditingController _dueDateController = TextEditingController();
+  final TextEditingController _durationController = TextEditingController();
+  final TextEditingController _customDayController = TextEditingController();
   final TextEditingController _amountController = TextEditingController();
   final TextEditingController _remarkController = TextEditingController();
 
@@ -26,7 +33,10 @@ class _BudgetAddScreenState extends State<BudgetAddScreen> {
   // Initialize these with null or empty values
   late IconData _selectedIcon;
   late Color _selectedColor;
-  final DateTime _selectedDate = DateTime.now(); // Default to current date
+  DateTime _endDate = DateTime.now().add(Duration(days: 7)); // Default to weekly
+  final DateTime _startDate = DateTime.now(); // Default to current date
+  DurationCategory _selectedDuration = DurationCategory.weekly;
+  bool _isRecurring = false;
 
   //=====================
   // INITIALIZATION
@@ -35,6 +45,7 @@ class _BudgetAddScreenState extends State<BudgetAddScreen> {
   void initState() {  //set default value
     super.initState();
     _initializeDefaultValues();
+    _updateDueDateDisplay();
   }
 
   void _initializeDefaultValues() {
@@ -45,37 +56,228 @@ class _BudgetAddScreenState extends State<BudgetAddScreen> {
     _categoryController.text = defaultCategory;
     _selectedIcon = CategoryUtils.getCategoryIcon(defaultCategory);
     _selectedColor = CategoryUtils.getCategoryColor(defaultCategory);
+
+    _selectedDuration = DurationCategory.weekly;
+    _durationController.text = _selectedDuration.name; // Initialize text
+    _calculateEndDate();
   }
 
   @override
   void dispose() {
     _categoryController.dispose();
+    _budgetNameController.dispose();
+    _dueDateController.dispose();
+    _durationController.dispose();
+    _customDayController.dispose();
     _amountController.dispose();
     _remarkController.dispose();
+
     super.dispose();
   }
 
   //=====================
   // BUSINESS LOGIC
   //=====================
+  Future<void> _selectDate() async {
+    final DateTime? picked = await showDatePicker(
+      context: context, // Uses the State's context
+      initialDate: _endDate,
+      firstDate: DateTime.now(),
+      lastDate: DateTime(2100),
+    );
+    if (picked != null) {
+      setState(() {
+        _endDate = DateTime(picked.year, picked.month, picked.day, 23, 59, 59);
+        _dueDateController.text = DateFormat('MMM dd, yyyy').format(_endDate);
+        _updateDurationFromDates(); // New method to auto-calculate duration
+      });
+    }
+  }
+
+  void _calculateEndDate() {
+    setState(() {
+      switch (_selectedDuration) {
+        case DurationCategory.daily:
+          _endDate = _startDate.add(const Duration(days: 1));
+          break;
+        case DurationCategory.weekly:
+          _endDate = _startDate.add(const Duration(days: 7));
+          break;
+        case DurationCategory.monthly:
+          // Same day next month (e.g., May 8 → June 8)
+          final nextMonth = _startDate.month + 1;
+          final nextYear = _startDate.year + (nextMonth > 12 ? 1 : 0);
+          final adjustedMonth = nextMonth > 12 ? nextMonth - 12 : nextMonth;
+          _endDate = DateTime(nextYear, adjustedMonth, _startDate.day);
+          break;
+        case DurationCategory.custom:
+          final days = int.tryParse(_customDayController.text);
+          if (days != null) _endDate = _startDate.add(Duration(days: days));
+          break;
+      }
+    });
+  }
+
+  void _updateDueDateDisplay() {
+    _dueDateController.text = DateFormat('MMM dd, yyyy').format(_endDate);
+  }
+
+  DateTime _calculateNextOccurrence() {
+    switch (_selectedDuration) {
+      case DurationCategory.daily:
+        return _endDate.add(const Duration(days: 1));
+      case DurationCategory.weekly:
+        return _endDate.add(const Duration(days: 7));
+      case DurationCategory.monthly:
+        final nextMonth = _endDate.month + 1;
+        final nextYear = _endDate.year + (nextMonth > 12 ? 1 : 0);
+        final adjustedMonth = nextMonth > 12 ? nextMonth - 12 : nextMonth;
+        return DateTime(
+          nextYear,
+          adjustedMonth,
+          min(_endDate.day, DateUtils.getDaysInMonth(nextYear, adjustedMonth)),
+        );
+      case DurationCategory.custom:
+        final days = int.tryParse(_customDayController.text) ?? 0;
+        return _endDate.add(Duration(days: days));
+    }
+  }
+
+  void _updateDurationFromDates() {
+    final daysDifference = _endDate.difference(_startDate).inDays;
+
+    setState(() {
+      if (daysDifference == 0) { // Same day
+        _selectedDuration = DurationCategory.daily;
+        _endDate = _startDate.add(Duration(days: 1)); // Force to next day
+      }
+      else if (daysDifference == 1) {
+        _selectedDuration = DurationCategory.daily;
+      }
+      else if (daysDifference == 7) {
+        _selectedDuration = DurationCategory.weekly;
+      }
+      else if (daysDifference >= 28 && daysDifference <= 31) {
+        // Check if it's approximately a month
+        final nextMonth = DateTime(_startDate.year, _startDate.month + 1, _startDate.day);
+        if (_endDate.day == nextMonth.day) {
+          _selectedDuration = DurationCategory.monthly;
+        } else {
+          _selectedDuration = DurationCategory.custom;
+          _customDayController.text = daysDifference.toString();
+        }
+      }
+      else {
+        _selectedDuration = DurationCategory.custom;
+        _customDayController.text = daysDifference.toString();
+      }
+
+      _durationController.text = _selectedDuration.name;
+    });
+  }
+
+  Future<bool> _isDuplicateBudget() async {
+    final userId = _auth.currentUser?.uid;
+    if (userId == null) return false;
+
+    // Check if a budget with the same name exists for the same user
+    final sameNameQuery = await _firestore
+        .collection('budgets')
+        .where('userId', isEqualTo: userId)
+        .where('budgetCategory', isEqualTo: _categoryController.text)
+        .where('budgetName', isEqualTo: _budgetNameController.text)
+        .get();
+
+    if (sameNameQuery.docs.isEmpty) {
+      return false; // No budget with same name exists
+    }
+
+    // Check for overlapping time periods
+    for (final doc in sameNameQuery.docs) {
+      final existingBudget = doc.data();
+      final existingStart = (existingBudget['startDate'] as Timestamp).toDate();
+      final existingEnd = (existingBudget['endDate'] as Timestamp).toDate();
+
+      if (_startDate.isBefore(existingEnd) && _endDate.isAfter(existingStart)) {
+        return true; // Overlapping budget found
+      }
+    }
+
+    return false;
+  }
+
+  // =========== GENERATE BUDGET ID ===============
+  Future<String> generateCategoryBudgetId(String category) async {
+    final prefix = CategoryUtils.getCategoryPrefix(category);
+
+    // Reference to the counter document for this category
+    final counterRef = FirebaseFirestore.instance
+        .collection('budget_counters')
+        .doc(category.toLowerCase());
+
+    try {
+      // Atomically increment the counter (or create if doesn't exist)
+      // Start transaction
+      final newCount = await FirebaseFirestore.instance
+          .runTransaction<int>((transaction) async {
+        final snapshot = await transaction.get(counterRef);
+
+        int currentCount = 0;
+        if (snapshot.exists) {
+          currentCount = (snapshot.data()?['count'] ?? 0) as int;
+        }
+
+        final updatedCount = currentCount + 1;
+        transaction.set(counterRef, {'count': updatedCount});
+        return updatedCount;
+      });
+
+      // Format: Prefix + 4-digit number (e.g., BFID0001)
+      return '$prefix${newCount.toString().padLeft(4, '0')}';
+    } catch (e) {
+      // Fallback if counter fails
+      final randomId = Random().nextInt(9999).toString().padLeft(4, '0');
+      return '$prefix$randomId';
+    }
+  }
+
   Future<void> _saveBudget() async {
     if (_formKey.currentState!.validate()) {
       try {
+        // Check for duplicate budget first
+        final isDuplicate = await _isDuplicateBudget();
+        if (isDuplicate) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('A budget with this name already exists for the selected time period'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+          return;
+        }
+
         final userId = _auth.currentUser?.uid;
         if (userId == null) return;
 
-        // Use _selectedDate instead of now
-        final firstDayOfMonth = DateTime(_selectedDate.year, _selectedDate.month, 1);
-        final lastDayOfMonth = DateTime(_selectedDate.year, _selectedDate.month + 1, 0);
+        final budgetId = await generateCategoryBudgetId(_categoryController.text);
 
+        //PASSING DATA TO FIREBASE
         final budgetData = {
+          'budgetId': budgetId,
           'budgetCategory': _categoryController.text,
+          'budgetName': _budgetNameController.text,
           'targetAmount': double.parse(_amountController.text),
           'remark': _remarkController.text,
-          'startDate': firstDayOfMonth,
-          'endDate': lastDayOfMonth,
+          'duration': _durationController.text,
+          'customDay': _selectedDuration == DurationCategory.custom
+        ? int.tryParse(_customDayController.text)
+            : null,
+          'startDate': Timestamp.fromDate(_startDate),
+          'endDate': Timestamp.fromDate(_endDate),
           'userId': userId,
-          'status': 'active' //default value
+          'status': 'active', //default value
+          'isRecurring': _isRecurring,
+          'nextOccurrence': _calculateNextOccurrence(),
         };
 
 
@@ -109,6 +311,18 @@ class _BudgetAddScreenState extends State<BudgetAddScreen> {
     return null;
   }
 
+  String? _dueDateValidator(String? value) {
+    if (value == null || value.isEmpty) return 'Please select a date';
+
+    final now = DateTime.now();
+    final selectedDate = _endDate;
+
+    if (selectedDate.isBefore(now)) {
+      return 'Deadline cannot be in the past';
+    }
+    return null;
+  }
+
   String? _amountValidator(String? value) {
     if (value == null || value.isEmpty) return 'Please enter a budget amount';
     final amount = double.tryParse(value);
@@ -116,11 +330,38 @@ class _BudgetAddScreenState extends State<BudgetAddScreen> {
     return null;
   }
 
-  String? _remarkValidator(String? value) {
-    if (value != null && value.length > 20) {
-      return 'We only accept 20 characters. Please try again';
+  String? _durationDropdownValidator(DurationCategory? value) {
+    if (value == null) return 'Select a duration type';
+    if (value == DurationCategory.custom &&
+        (_customDayController.text.isEmpty ||
+            int.tryParse(_customDayController.text) == null)) {
+      return 'Set valid custom days';
     }
     return null;
+  }
+
+  String? _customDaysValidator(String? value) {
+    if (_selectedDuration != DurationCategory.custom) return null;
+    if (value == null || value.isEmpty) return 'Required';
+    final days = int.tryParse(value);
+    if (days == null) return 'Enter a valid number';
+    if (days <= 0) return 'Must be positive';
+    return null;
+  }
+
+  String? _remarkValidator(String? value) {
+    if (value != null && value.length > 50) {
+      return 'We only accept 50 characters. Please try again';
+    }
+    return null;
+  }
+
+  //=====================
+  // NAVIGATOR
+  //=====================
+  void _navigateToEditBudget() {
+    //Add-on features
+    //Navigator.pushNamed( context, '/budget_challenges');
   }
 
   //=====================
@@ -131,12 +372,19 @@ class _BudgetAddScreenState extends State<BudgetAddScreen> {
     return Scaffold(
       appBar: _buildAppBar(),
       body: _buildBody(),
+      floatingActionButton: _buildSubmitButton(),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
     );
   }
 
   AppBar _buildAppBar(){
     return AppBar(
-    title: Text('Create Budget'),
+      title: Text('Create Budget'),
+      actions: [
+        IconButton(
+            onPressed: () => _navigateToEditBudget(),
+            icon: Icon(Icons.local_fire_department_outlined))
+      ],
     );
   }
 
@@ -153,12 +401,18 @@ class _BudgetAddScreenState extends State<BudgetAddScreen> {
             _buildBudgetNameField(),
             const SizedBox(height: 20),
             _buildAmountField(),
-            const SizedBox(height: 32),
+            const SizedBox(height: 20),
+            _buildDueDateField(),
+            _buildDeadlineWarning(),
+            const SizedBox(height: 20),
+            _buildDurationField(),
+            const SizedBox(height: 20),
             _buildRemarkField(),
+            const SizedBox(height: 20),
+            _buildRepeatSwitch(),
             const SizedBox(height: 32),
             _buildPreview(),
             const SizedBox(height: 32),
-            _buildSubmitButton(),
           ],
         ),
       ),
@@ -168,13 +422,15 @@ class _BudgetAddScreenState extends State<BudgetAddScreen> {
   Widget _buildCategoryNameField() {
     return SizedBox(
       width: 200,
-      height: 50,
+      height: 60,
       child: InputDecorator(
         decoration: InputDecoration(
           labelText: 'Category',
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(15.0),
           ),
+          filled: true,
+          fillColor: Colors.purple[50],
         ),
         child: DropdownButtonHideUnderline(
           child: DropdownButton<String>(
@@ -223,6 +479,7 @@ class _BudgetAddScreenState extends State<BudgetAddScreen> {
     return TextFormField(
       controller: _budgetNameController,
       decoration: const InputDecoration(
+        prefixIcon: Icon(Icons.title),
         labelText: 'Budget Title',
         hintText: 'Eg. Haidilao',
         border: OutlineInputBorder(),
@@ -239,12 +496,33 @@ class _BudgetAddScreenState extends State<BudgetAddScreen> {
     );
   }
 
+  Widget _buildDueDateField(){
+    return GestureDetector(
+      onTap: _selectDate, // Trigger date picker on any tap
+      child: AbsorbPointer(
+        child: TextFormField(
+          controller: _dueDateController,
+          readOnly: true,
+          decoration: InputDecoration(
+            labelText: 'Due Date',
+            hintText: 'Select a date',
+            border: const OutlineInputBorder(),
+            prefixIcon: const Icon(Icons.calendar_today), // Optional prefix
+            suffixIcon: const Icon(Icons.arrow_drop_down), // Optional dropdown hint
+          ),
+          validator: _dueDateValidator,
+        ),
+      ),
+    );
+  }
+
   Widget _buildAmountField() {
     return TextFormField(
       controller: _amountController,
       decoration: const InputDecoration(
+        prefixIcon: Icon(Icons.attach_money),
         labelText: 'Budget Amount (RM)',
-        hintText: 'E.g. 500.00',
+        hintText: 'Eg. 500.00',
         border: OutlineInputBorder(),
         prefixText: 'RM ',
       ),
@@ -263,10 +541,100 @@ class _BudgetAddScreenState extends State<BudgetAddScreen> {
     );
   }
 
+  Widget _buildDurationField(){
+    return Column(
+      children: [
+        DropdownButtonHideUnderline(
+          child: DropdownButtonFormField<DurationCategory>(
+            value: _selectedDuration,
+            decoration: InputDecoration(
+              labelText: 'Duration',
+              prefixIcon: Icon(Icons.timer),
+              border: OutlineInputBorder(),
+            ),
+            isExpanded: true,
+            items: DurationCategory.values.map((duration) {
+              return DropdownMenuItem(
+                value: duration,
+                child: Text(
+                  duration.name.toUpperCase(),
+                ),
+              );
+            }).toList(),
+            onChanged: (DurationCategory? newValue) {
+              if (newValue != null) {
+                setState(() {
+                  _selectedDuration = newValue;
+                  if (newValue != DurationCategory.custom) {
+                    _calculateEndDate();
+                    _updateDueDateDisplay();
+                  } else {
+                    _customDayController.text = '';
+                  }
+                });
+              }
+            },
+            validator: _durationDropdownValidator,
+          ),
+        ),
+        // Conditional Custom Days Input
+        if (_selectedDuration == DurationCategory.custom)
+          _buildCustomDaysField(),
+      ],
+    );
+  }
+
+  Widget _buildCustomDaysField(){
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: TextFormField(
+        controller: _customDayController,
+        keyboardType: TextInputType.number,
+        decoration: InputDecoration(
+          prefixIcon: Icon(Icons.dashboard_customize_outlined),
+          labelText: 'Number of Days',
+          border: OutlineInputBorder(),
+          suffixText: 'days',
+        ),
+        validator: _customDaysValidator,
+        onChanged: (value) {
+          final days = int.tryParse(value);
+          if (days != null && days > 0) {
+            _endDate = _startDate.add(Duration(days: days));
+            _updateDueDateDisplay();
+          }
+        },
+      ),
+    );
+  }
+
+  Widget _buildRepeatSwitch(){
+    return SwitchListTile(
+      contentPadding: EdgeInsets.zero, // Remove default padding
+      title: const Text(
+        'Repeat',
+        style: TextStyle(fontSize: 16),
+      ),
+      subtitle: _isRecurring
+          ? const Text('This budget will repeat automatically')
+          : null,
+      value: _isRecurring,
+      onChanged: (bool value) {
+        setState(() {
+          _isRecurring = value;
+        });
+      },
+      secondary: const Icon(Icons.repeat),
+      activeColor: Colors.purple[200], // Your theme color
+      inactiveTrackColor: Colors.grey[300],
+    );
+  }
+
   Widget _buildRemarkField(){
     return TextFormField(
       controller: _remarkController,
       decoration: const InputDecoration(
+        prefixIcon: Icon(Icons.speaker_notes_outlined),
         labelText: 'Remark',
         hintText: 'Eg. Eat with friends',
         border: OutlineInputBorder(),
@@ -289,10 +657,19 @@ class _BudgetAddScreenState extends State<BudgetAddScreen> {
               'Preview',
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
+            Row(
+              children: [
+                _buildStatusIndicator('active'),
+                Spacer(),
+                _buildRepeatIcon(_isRecurring),
+              ],
+            ),
             const SizedBox(height: 16),
             _buildPreviewHeader(),
             const SizedBox(height: 16),
             _buildBudgetProgress(),
+            const SizedBox(height: 16),
+            _buildBudgetDeadlineProgress(),
           ],
         ),
       ),
@@ -319,9 +696,6 @@ class _BudgetAddScreenState extends State<BudgetAddScreen> {
             _budgetNameController.text,
             style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
           ),
-
-        if (_remarkController.text.isNotEmpty && _remarkController.text.length <= 20)
-          Text(_remarkController.text, style: const TextStyle(fontSize: 16)),
       ],
     );
   }
@@ -339,6 +713,7 @@ class _BudgetAddScreenState extends State<BudgetAddScreen> {
 
   Widget _buildBudgetProgress() {
     final amount = double.tryParse(_amountController.text) ?? 0.0;
+    final remainAmount = amount;
 
     return Column(
       children: [
@@ -349,26 +724,202 @@ class _BudgetAddScreenState extends State<BudgetAddScreen> {
               'RM 0.00 of RM ${amount.toStringAsFixed(2)}',
               style: TextStyle(color: Colors.grey[600]),
             ),
-            const Text('0%', style: TextStyle(fontWeight: FontWeight.bold)),
+            Text(
+              '0%',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: _getProgressColor(0),
+              )
+            ),
           ],
         ),
         const SizedBox(height: 8),
         LinearProgressIndicator(
           value: 0,
           backgroundColor: Colors.grey[200],
-          valueColor: AlwaysStoppedAnimation<Color>(_selectedColor),
+          valueColor: AlwaysStoppedAnimation<Color>(_getProgressColor(0)),
           minHeight: 8,
           borderRadius: BorderRadius.circular(4),
+        ),
+        const SizedBox(height: 4),
+        Align(
+          alignment: Alignment.centerRight,
+          child: Text(
+            'RM${remainAmount.toStringAsFixed(2)} remaining',
+            style: TextStyle(
+              color: Colors.grey[600],
+              fontSize: 11,
+            ),
+          ),
         ),
       ],
     );
   }
 
-  Widget _buildSubmitButton() {
-    return ElevatedButton(
-      onPressed: _saveBudget,
-      style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 50)),
-      child: const Text('Create Budget'),
+  Widget _buildBudgetDeadlineProgress() {
+    final now = DateTime.now();
+    final startDateAtMidnight = DateTime(_startDate.year, _startDate.month, _startDate.day);
+    final endDateAtMidnight = DateTime(_endDate.year, _endDate.month, _endDate.day);
+
+    // Ensure at least 1 day remains if deadline is today or future
+    final remainDays = endDateAtMidnight.difference(now).inDays.clamp(0, 365);
+
+    // Format dates
+    final startDateFormatted = DateFormat('dd/MM/yyyy').format(_startDate);
+    final endDateFormatted = DateFormat('dd/MM/yyyy').format(_endDate);
+
+    return Column(
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              '$startDateFormatted until $endDateFormatted',
+              style: TextStyle(
+                color: Colors.grey[600],
+                fontSize: 12,
+              ),
+            ),
+            Text(
+              '0%',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: _getProgressColor(0),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        LinearProgressIndicator(
+          value: 0,
+          backgroundColor: Colors.grey[200],
+          valueColor: AlwaysStoppedAnimation<Color>(_getProgressColor(0)),
+          minHeight: 8,
+          borderRadius: BorderRadius.circular(4),
+        ),
+        const SizedBox(height: 4),
+        Align(
+          alignment: Alignment.centerRight,
+          child: Text(
+            '$remainDays ${remainDays == 1 ? 'day' : 'days'}  remaining',
+            style: TextStyle(
+              color: Colors.grey[600],
+              fontSize: 11,
+            ),
+          ),
+        ),
+      ],
     );
+  }
+
+  Color _getProgressColor(double progress) {
+    if (progress < 0.3) return Colors.green;
+    if (progress < 0.7) return Colors.orange;
+    return Colors.red;
+  }
+
+  Widget _buildStatusIndicator(String status) {
+    Color statusColor;
+    String statusText;
+
+    switch (status.toLowerCase()) {
+      case 'active':
+        statusColor = Colors.green;
+        statusText = 'Active';
+        break;
+      case 'completed':
+        statusColor = Colors.blue;
+        statusText = 'Completed';
+        break;
+      case 'failed':
+        statusColor = Colors.grey;
+        statusText = 'Failed';
+        break;
+      case 'stopped':
+        statusColor = Colors.orange;
+        statusText = 'Stopped';
+        break;
+      case 'deleted':
+        statusColor = Colors.red;
+        statusText = 'Deleted';
+        break;
+      default:
+        statusColor = Colors.black;
+        statusText = 'Unknown';
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: statusColor.withOpacity(0.2),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: statusColor.withOpacity(0.5), width: 1),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.circle,
+            color: statusColor,
+            size: 12,
+          ),
+          const SizedBox(width: 4),
+          Text(
+            statusText,
+            style: TextStyle(
+              color: statusColor,
+              fontWeight: FontWeight.bold,
+              fontSize: 12,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRepeatIcon(bool isRepeat){
+    return Tooltip(
+      message: isRepeat ? 'Repeat Budget' : 'One-time Budget',
+      child: Container(
+        padding: const EdgeInsets.all(4),
+        decoration: BoxDecoration(
+          color: isRepeat
+              ? Colors.purple.withOpacity(0.2)
+              : Colors.grey.withOpacity(0.2),
+          shape: BoxShape.circle,
+        ),
+        child: Icon(
+          Icons.repeat,
+          size: 20,
+          color: isRepeat ? Colors.purple : Colors.grey,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSubmitButton() {
+    bool isFormValid = _formKey.currentState?.validate() ?? false;
+    return FloatingActionButton(
+      onPressed: isFormValid ? _saveBudget : null,
+      shape: CircleBorder(),
+      backgroundColor: isFormValid ? Colors.purple[100] : Colors.grey[300],
+      child: const Icon(Icons.check),
+    );
+  }
+
+  Widget _buildDeadlineWarning() {
+    final now = DateTime.now();
+    final remainDays = _endDate.difference(now).inDays;
+
+    if (remainDays <= 1) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 8.0),
+        child: Text(
+          '⚠️ Deadline is very close!',
+          style: TextStyle(color: Colors.orange[800], fontSize: 12),
+        ),
+      );
+    }
+    return SizedBox.shrink();
   }
 }

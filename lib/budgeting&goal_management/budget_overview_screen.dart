@@ -1,11 +1,16 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:mobile_app_assignment/category_utils.dart';
 import 'package:mobile_app_assignment/models/budget_model.dart';
 import 'package:mobile_app_assignment/models/transaction_model.dart';
 import 'package:month_picker_dialog/month_picker_dialog.dart';
+
+import '../sorting_utils.dart';
 
 class BudgetOverviewScreen extends StatefulWidget {
   const BudgetOverviewScreen({super.key});
@@ -16,6 +21,7 @@ class BudgetOverviewScreen extends StatefulWidget {
 
 class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
     with SingleTickerProviderStateMixin {
+
   // ========== Constants and Properties ==========
   static const _budgetTabIndex = 2;
 
@@ -23,30 +29,105 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
   final FirebaseAuth _auth = FirebaseAuth.instance;
   DateTime _selectedDate = DateTime.now();
   int _currentIndex = _budgetTabIndex; // Make sure index matches Budget tab
+
+  // Tab bar control
+  late TabController _tabController;
   int _activeTabIndex = 0; // Default to first tab (All)
 
-  late TabController _tabController;
-
+  // Search properties
   final TextEditingController _searchController = TextEditingController();
   String _searchTerm = '';
   bool _isSearchVisible = false;
+  SortingOptions _sortingOptions = const SortingOptions();
+
+  // ========== Filter Properties ==========
+  List<String> _selectedCategories = [];
+  double _minAmount = 0;
+  double _maxAmount = double.infinity;
+  DateTime? _filterStartDate;
+  DateTime? _filterEndDate;
+  bool _isFilterActive = false;
+  final TextEditingController _minAmountController = TextEditingController();
+  final TextEditingController _maxAmountController = TextEditingController();
+  String? _minAmountError;
+  String? _maxAmountError;
+  final TextEditingController _startDateController = TextEditingController();
+  final TextEditingController _endDateController = TextEditingController();
+  String? _startDateError;
+  String? _endDateError;
 
   // ======= For tab bar ========
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 5, vsync: this); // 5 tabs
+    _tabController = TabController(length: 6, vsync: this); // 6 tabs
     _tabController.addListener(() {
       setState(() {
         _activeTabIndex = _tabController.index;
       });
+    });
+
+    // Check status every hour
+    Timer.periodic(Duration(hours: 1), (timer) {
+      _checkAndUpdateAllBudgets();
     });
   }
 
   @override
   void dispose() {
     _tabController.dispose();
+    _searchController.dispose();
+    _minAmountController.dispose();
+    _maxAmountController.dispose();
+    _startDateController.dispose();
+    _endDateController.dispose();
     super.dispose();
+  }
+
+  // =========== Update Status ================
+  void _checkAndUpdateAllBudgets() async {
+    final budgets = await _firestore
+        .collection('budgets')
+        .where('userId', isEqualTo: _auth.currentUser?.uid)
+        .where('status', isEqualTo: 'active')
+        .get();
+
+    final batch = _firestore.batch();
+
+    for (var doc in budgets.docs) {
+      final budget = BudgetModel.fromFirestore(doc);
+      final previousStatus = budget.status;
+
+      budget.updateStatus(currentDate: _selectedDate);
+
+      if (budget.status != previousStatus) {
+        batch.update(doc.reference, {'status': budget.status.name});
+      }
+    }
+
+    await batch.commit();
+  }
+
+  void _updateCurrentSpent() async{
+    final budgets = await _firestore
+        .collection('budgets')
+        .where('userId', isEqualTo: _auth.currentUser?.uid)
+        .where('status', isEqualTo: 'active')
+        .get();
+
+    final batch = _firestore.batch();
+    for (var doc in budgets.docs) {
+      final budget = BudgetModel.fromFirestore(doc);
+      final previousStatus = budget.status;
+
+      budget.updateStatus(currentDate: _selectedDate);
+
+      double currentSpent = 0.00;
+
+      if (budget.status != previousStatus) {
+        batch.update(doc.reference, {'status': budget.status.name});
+      }
+    }
   }
 
   // ========= Popup Windows for more action ========
@@ -68,7 +149,7 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
         _showSortDialog(context);
         break;
       case 'filter':
-      //filterPopup();
+        _showFilterDialog(context);
         break;
       case 'history':
         _navigateToBudgetHistory();
@@ -87,95 +168,213 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
     );
   }
 
-  void _performSort(String? sortBy, bool ascending) {
-    // This will be implemented in your actual sorting logic
-    debugPrint('Sorting by $sortBy in ${ascending
-        ? 'ascending'
-        : 'descending'} order');
-    // Call your actual sort functions here based on the selected option
-    switch (sortBy) {
-      case 'alphabet':
-      // sortAlphabetically(ascending);
-        break;
-      case 'duration':
-      // sortByDuration(ascending);
-        break;
-      case 'dueDate':
-      // sortByDueDate(ascending);
-        break;
-      case 'process':
-      // sortByProcess(ascending);
-        break;
-      case 'category':
-      // sortByCategory(ascending);
-        break;
-      case 'budgetAmount':
-      // sortByBudgetAmount(ascending);
-        break;
-      default:
-      // sortByCreatedDate(descending);
-      // No sorting or default sorting
-        break;
-    }
+  void _applySorting(SortingOptions newOptions) {
+    setState(() {
+      _sortingOptions = newOptions;
+    });
   }
 
-  void _sortAlphabetically(bool ascending) {
-    // Implement alphabetical sorting logic here
-  }
+  // ========== Filter Method ==========
+  void _showFilterDialog(BuildContext context) {
+    final allCategories = CategoryUtils.categories;
 
-  void _sortByDuration(bool ascending) {
-    // Implement duration sorting logic here
-  }
+    // Clear controllers and set initial values
+    _minAmountController.text = _minAmount > 0 ? _minAmount.toStringAsFixed(2) : '';
+    _maxAmountController.text = _maxAmount < double.infinity ? _maxAmount.toStringAsFixed(2) : '';
+    _startDateController.text = _filterStartDate != null
+        ? DateFormat('dd/MM/yyyy').format(_filterStartDate!)
+        : '';
+    _endDateController.text = _filterEndDate != null
+        ? DateFormat('dd/MM/yyyy').format(_filterEndDate!)
+        : '';
 
-  void _sortByDueDate(bool ascending) {
-    // Implement due date sorting logic here
-  }
-
-  void _sortByProcess(bool ascending) {
-    // Implement process sorting logic here
-  }
-
-  void _sortByCategory(bool ascending) {
-    // Implement category sorting logic here
-  }
-
-  void _sortByBudgetAmount(bool ascending) {
-    // Implement budget amount sorting logic here
-  }
-
-  // ======== Search Method ===========
-  void _showSearchContent(BuildContext context) {
     showDialog(
       context: context,
+      barrierDismissible: false,
       builder: (BuildContext context) {
-        return _buildSearchContent(context);
+        List<String> dialogSelectedCategories = List.from(_selectedCategories);
+
+        return StatefulBuilder(
+          builder: (context, dialogSetState) {
+            return AlertDialog(
+              title: const Text('Filter Budgets'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Category Filter
+                    _buildCategoriesFilter(dialogSelectedCategories, allCategories, dialogSetState),
+                    const SizedBox(height: 16),
+
+                    // Amount Range Filter
+                    _buildAmountRangeFilter(dialogSetState),
+                    const SizedBox(height: 16),
+
+                    // Date Range Filter
+                    _buildDateRangeFilter(dialogSetState),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    dialogSetState(() {
+                      dialogSelectedCategories.clear();
+                      _minAmountController.clear();
+                      _maxAmountController.clear();
+                      _startDateController.clear();
+                      _endDateController.clear();
+                      _minAmountError = null;
+                      _maxAmountError = null;
+                      _filterStartDate = null;
+                      _filterEndDate = null;
+                      _startDateError = null;
+                      _endDateError = null;
+                    });
+                  },
+                  child: const Text('Reset All'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Cancel'),
+                ),
+                TextButton(
+                  onPressed: () {
+                    _validateAmounts(_minAmountController.text, _maxAmountController.text, dialogSetState);
+                    _validateDateRange();
+
+                    if (_minAmountError == null &&
+                        _maxAmountError == null &&
+                        _startDateError == null &&
+                        _endDateError == null) {
+                      setState(() {
+                        _selectedCategories = dialogSelectedCategories;
+                        _minAmount = _minAmountController.text.isEmpty
+                            ? 0
+                            : double.parse(_minAmountController.text);
+                        _maxAmount = _maxAmountController.text.isEmpty
+                            ? double.infinity
+                            : double.parse(_maxAmountController.text);
+                        _filterStartDate = DateTime.tryParse(_startDateController.text);
+                        _filterEndDate = DateTime.tryParse(_endDateController.text);
+                        _isFilterActive = dialogSelectedCategories.isNotEmpty ||
+                            _minAmount > 0 ||
+                            _maxAmount < double.infinity ||
+                            _filterStartDate != null ||
+                            _filterEndDate != null;
+                      });
+                      Navigator.of(context).pop();
+                    }
+                  },
+                  child: const Text('Apply'),
+                ),
+              ],
+            );
+          },
+        );
       },
     );
   }
 
-  void _performSearch(String searchTerm) {
-    // This is where you handle the search logic
-    debugPrint('Search performed with term: $searchTerm');
-    // You can add your actual search logic here, e.g., filtering data, calling an API, etc.
+  void _validateAmounts(String minValue, String maxValue, StateSetter amtSetState) {
+    final min = double.tryParse(minValue);
+    final max = double.tryParse(maxValue);
+
+    // Reset errors
+    _minAmountError = null;
+    _maxAmountError = null;
+
+    if (minValue.isEmpty && maxValue.isEmpty) {
+      _minAmountError = null;
+      _maxAmountError = null;
+      amtSetState(() {});
+      return;
+    }
+
+    // Validate min amount
+    if (minValue.isNotEmpty) {
+      if (min == null) {
+        _minAmountError = 'Enter a valid number';
+      } else if (min < 0) {
+        _minAmountError = 'Cannot be negative';
+      }
+    }
+
+    // Validate max amount
+    if (maxValue.isNotEmpty) {
+      if (max == null) {
+        _maxAmountError = 'Enter a valid number';
+      } else if (max < 0) {
+        _maxAmountError = 'Cannot be negative';
+      }
+    }
+
+    // Validate min < max
+    if (min != null && max != null && max < min) {
+      _maxAmountError = 'Max must be above Min';
+    }
+
+    if (_minAmountError != null || _maxAmountError != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please fix the errors before applying')),
+      );
+      return;
+    }
+
+    // Update the state to show errors
+    amtSetState(() {
+
+    });
+  }
+
+  void _validateDateRange() {
+    _startDateError = null;
+    _endDateError = null;
+
+    if (_filterStartDate != null && _filterEndDate != null) {
+      if (_filterStartDate!.isAfter(_filterEndDate!)) {
+        _startDateError = 'Start Date must be before End Date';
+        _endDateError = 'End Date must be after Start Date';
+      }
+    }
+  }
+
+  List<BudgetModel> _applyFilters(List<BudgetModel> budgets) {
+    if (!_isFilterActive) return budgets;
+
+    return budgets.where((budget) {
+      // Category filter
+      if (_selectedCategories.isNotEmpty &&
+          !_selectedCategories.contains(budget.budgetCategory)) {
+        return false;
+      }
+
+      // Amount range filter
+      if (budget.targetAmount < _minAmount || budget.targetAmount > _maxAmount) {
+        return false;
+      }
+
+      // Date range filter
+      if (_filterStartDate != null && budget.endDate.isBefore(_filterStartDate!)) {
+        return false;
+      }
+      if (_filterEndDate != null && budget.startDate.isAfter(_filterEndDate!)) {
+        return false;
+      }
+
+      return true;
+    }).toList();
   }
 
   // ========== Main Build Method ==========
   @override
   Widget build(BuildContext context) {
-    return PopScope(
-      canPop: false, // Prevent default pop
-      onPopInvokedWithResult: (didPop, result) {
-        if (!didPop) {
-          Navigator.pushReplacementNamed(context, '/home');
-        }
-      },
-      child: Scaffold(
-        appBar: _buildAppBar(),
-        body: _buildBody(),
-        floatingActionButton: _buildCreateBudgetButton(),
-        floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
-        bottomNavigationBar: _buildBottomNavigationBar(),
-      ),
+    return Scaffold(
+      appBar: _buildAppBar(),
+      body: _buildBody(),
+      floatingActionButton: _buildCreateBudgetButton(),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      bottomNavigationBar: _buildBottomNavigationBar(),
     );
   }
 
@@ -257,6 +456,7 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
           Tab(text: 'Active'),
           Tab(text: 'Completed'),
           Tab(text: 'Failed'),
+          Tab(text: 'Stopped'),
           Tab(text: 'Deleted'),
         ],
         onTap: (index) {
@@ -281,6 +481,7 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
               _buildActiveBudgetsTab(),
               _buildCompletedBudgetsTab(),
               _buildFailedBudgetsTab(),
+              _buildStoppedBudgetsTab(),
               _buildDeletedBudgetsTab(),
             ],
           ),
@@ -295,24 +496,26 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
       stream: _firestore
           .collection('budgets')
           .where('userId', isEqualTo: _auth.currentUser?.uid)
-          .where('status',
-          whereIn: ['active', 'completed', 'failed', 'stopped', 'deleted'])
-          .where('startDate', isLessThanOrEqualTo:
-      Timestamp.fromDate(
+          .where('status', whereIn: ['active', 'completed', 'failed', 'stopped', 'deleted'])
+          .where('startDate', isLessThanOrEqualTo: Timestamp.fromDate(
           DateTime(_selectedDate.year, _selectedDate.month + 1, 0)))
-          .where('endDate', isGreaterThanOrEqualTo:
-      Timestamp.fromDate(DateTime(_selectedDate.year, _selectedDate.month, 1)))
+          .where('endDate', isGreaterThanOrEqualTo: Timestamp.fromDate(DateTime(_selectedDate.year, _selectedDate.month, 1)))
           .snapshots(),
       builder: (context, snapshot) {
         List<BudgetModel> budgets = (snapshot.data?.docs ?? [])
-            .map((doc) => BudgetModel.fromFirestore(doc))
-            .where((budget) =>
-        _searchTerm.isEmpty ||
-            budget.budgetCategory.toLowerCase().contains(
+            .map((doc) {
+              var budget = BudgetModel.fromFirestore(doc);
+              budget.updateStatus(currentDate: _selectedDate);
+              return budget;
+            })
+            .where((budget) => _searchTerm.isEmpty ||
+            budget.budgetName.toLowerCase().contains(
                 _searchTerm.toLowerCase()) ||
             (budget.remark?.toLowerCase().contains(_searchTerm.toLowerCase()) ??
                 false))
             .toList();
+
+        budgets = _applyFilters(budgets);
 
         return _buildBudgetContent(budgets);
       },
@@ -337,11 +540,13 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
             .map((doc) => BudgetModel.fromFirestore(doc))
             .where((budget) =>
         _searchTerm.isEmpty ||
-            budget.budgetCategory.toLowerCase().contains(
+            budget.budgetName.toLowerCase().contains(
                 _searchTerm.toLowerCase()) ||
             (budget.remark?.toLowerCase().contains(_searchTerm.toLowerCase()) ??
                 false))
             .toList();
+
+        activeBudgets = _applyFilters(activeBudgets);
 
         return _buildBudgetContent(activeBudgets);
       },
@@ -353,7 +558,7 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
       stream: _firestore
           .collection('budgets')
           .where('userId', isEqualTo: _auth.currentUser?.uid)
-          .where('status', isEqualTo: Status.completed)
+          .where('status', whereIn: ['completed'])
           .where('startDate', isLessThanOrEqualTo:
       Timestamp.fromDate(
           DateTime(_selectedDate.year, _selectedDate.month + 1, 0)))
@@ -361,18 +566,20 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
       Timestamp.fromDate(DateTime(_selectedDate.year, _selectedDate.month, 1)))
           .snapshots(),
       builder: (context, snapshot) {
-        // Filtered content for active budgets
-        List<BudgetModel> budgets = (snapshot.data?.docs ?? [])
+        // Filtered content for completed budgets
+        List<BudgetModel> completedBudgets = (snapshot.data?.docs ?? [])
             .map((doc) => BudgetModel.fromFirestore(doc))
             .where((budget) =>
         _searchTerm.isEmpty ||
-            budget.budgetCategory.toLowerCase().contains(
+            budget.budgetName.toLowerCase().contains(
                 _searchTerm.toLowerCase()) ||
             (budget.remark?.toLowerCase().contains(_searchTerm.toLowerCase()) ??
                 false))
             .toList();
 
-        return _buildBudgetContent(budgets);
+        completedBudgets = _applyFilters(completedBudgets);
+
+        return _buildBudgetContent(completedBudgets);
       },
     );
   }
@@ -382,7 +589,7 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
       stream: _firestore
           .collection('budgets')
           .where('userId', isEqualTo: _auth.currentUser?.uid)
-          .where('status', isEqualTo: Status.failed)
+          .where('status', whereIn: ['failed'])
           .where('startDate', isLessThanOrEqualTo:
       Timestamp.fromDate(
           DateTime(_selectedDate.year, _selectedDate.month + 1, 0)))
@@ -390,18 +597,51 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
       Timestamp.fromDate(DateTime(_selectedDate.year, _selectedDate.month, 1)))
           .snapshots(),
       builder: (context, snapshot) {
-        // Filtered content for active budgets
-        List<BudgetModel> budgets = (snapshot.data?.docs ?? [])
+        // Filtered content for failed budgets
+        List<BudgetModel> failedBudgets = (snapshot.data?.docs ?? [])
             .map((doc) => BudgetModel.fromFirestore(doc))
             .where((budget) =>
         _searchTerm.isEmpty ||
-            budget.budgetCategory.toLowerCase().contains(
+            budget.budgetName.toLowerCase().contains(
                 _searchTerm.toLowerCase()) ||
             (budget.remark?.toLowerCase().contains(_searchTerm.toLowerCase()) ??
                 false))
             .toList();
 
-        return _buildBudgetContent(budgets);
+        failedBudgets = _applyFilters(failedBudgets);
+
+        return _buildBudgetContent(failedBudgets);
+      },
+    );
+  }
+
+  Widget _buildStoppedBudgetsTab() {
+    return StreamBuilder<QuerySnapshot>(
+      stream: _firestore
+          .collection('budgets')
+          .where('userId', isEqualTo: _auth.currentUser?.uid)
+          .where('status', whereIn: ['stopped'])
+          .where('startDate', isLessThanOrEqualTo:
+      Timestamp.fromDate(
+          DateTime(_selectedDate.year, _selectedDate.month + 1, 0)))
+          .where('endDate', isGreaterThanOrEqualTo:
+      Timestamp.fromDate(DateTime(_selectedDate.year, _selectedDate.month, 1)))
+          .snapshots(),
+      builder: (context, snapshot) {
+        // Filtered content for stopped budgets
+        List<BudgetModel> stoppedBudgets = (snapshot.data?.docs ?? [])
+            .map((doc) => BudgetModel.fromFirestore(doc))
+            .where((budget) =>
+        _searchTerm.isEmpty ||
+            budget.budgetName.toLowerCase().contains(
+                _searchTerm.toLowerCase()) ||
+            (budget.remark?.toLowerCase().contains(_searchTerm.toLowerCase()) ??
+                false))
+            .toList();
+
+        stoppedBudgets = _applyFilters(stoppedBudgets);
+
+        return _buildBudgetContent(stoppedBudgets);
       },
     );
   }
@@ -411,7 +651,7 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
       stream: _firestore
           .collection('budgets')
           .where('userId', isEqualTo: _auth.currentUser?.uid)
-          .where('status', isEqualTo: Status.deleted)
+          .where('status', whereIn: ['deleted'])
           .where('startDate', isLessThanOrEqualTo:
       Timestamp.fromDate(
           DateTime(_selectedDate.year, _selectedDate.month + 1, 0)))
@@ -420,124 +660,91 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
           .snapshots(),
       builder: (context, snapshot) {
         // Filtered content for active budgets
-        List<BudgetModel> budgets = (snapshot.data?.docs ?? [])
+        List<BudgetModel> deletedBudgets = (snapshot.data?.docs ?? [])
             .map((doc) => BudgetModel.fromFirestore(doc))
             .where((budget) =>
         _searchTerm.isEmpty ||
-            budget.budgetCategory.toLowerCase().contains(
+            budget.budgetName.toLowerCase().contains(
                 _searchTerm.toLowerCase()) ||
             (budget.remark?.toLowerCase().contains(_searchTerm.toLowerCase()) ??
                 false))
             .toList();
 
-        return _buildBudgetContent(budgets);
+        deletedBudgets = _applyFilters(deletedBudgets);
+
+        return _buildBudgetContent(deletedBudgets);
       },
     );
   }
 
   //======== Sort Content ========
   Widget _buildSortDialogContent(BuildContext context) {
-    String? selectedSortOption; // Currently selected sort option
-    bool isAscending = true; // Sort direction
+    SortCategory currentCategory = _sortingOptions.category;
+    SortDirection currentDirection = _sortingOptions.direction;
 
-    return AlertDialog(
-      title: const Text('Sort By'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Sort options radio buttons
-          ..._buildSortOptions(selectedSortOption),
-
-          const SizedBox(height: 16),
-
-          const Text(
-            'Sort Direction:',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          // Sort direction toggle
-          Row(
+    return StatefulBuilder(
+      builder: (context, setState) {
+        return AlertDialog(
+          title: const Text('Sort By'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              const SizedBox(width: 16),
-              ToggleButtons(
-                isSelected: [isAscending, !isAscending],
-                onPressed: (index) {
-                  isAscending = index == 0;
-                  Navigator.of(context).pop();
-                  _performSort(selectedSortOption, isAscending);
+              ...SortCategory.values.map((category) {
+                return RadioListTile<SortCategory>(
+                  title: Row(
+                    children: [
+                      Icon(SortingUtils.getSortCategoryIcon(category)),
+                      const SizedBox(width: 8),
+                      Text(SortingUtils.getSortCategoryName(category)),
+                    ],
+                  ),
+                  value: category,
+                  groupValue: currentCategory,
+                  onChanged: (SortCategory? value) {
+                    setState(() => currentCategory = value!);
+                  },
+                );
+              }),
+              const Divider(),
+              RadioListTile<SortDirection>(
+                title: const Text('Ascending'),
+                value: SortDirection.ascending,
+                groupValue: currentDirection,
+                onChanged: (SortDirection? value) {
+                  setState(() => currentDirection = value!);
                 },
-                children: const [
-                  Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 16),
-                    child: Text('Ascending'),
-                  ),
-                  Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 16),
-                    child: Text('Descending'),
-                  ),
-                ],
+              ),
+              RadioListTile<SortDirection>(
+                title: const Text('Descending'),
+                value: SortDirection.descending,
+                groupValue: currentDirection,
+                onChanged: (SortDirection? value) {
+                  setState(() => currentDirection = value!);
+                },
               ),
             ],
           ),
-        ],
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
-        ),
-        TextButton(
-          onPressed: () {
-            Navigator.of(context).pop();
-            _performSort(selectedSortOption, isAscending);
-          },
-          child: const Text('Apply'),
-        ),
-      ],
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () {
+                setState(() {
+                  _applySorting(SortingOptions(
+                    category: currentCategory,
+                    direction: currentDirection,
+                  ));
+                });
+                Navigator.pop(context);
+              },
+              child: const Text('Apply'),
+            ),
+          ],
+        );
+      },
     );
-  }
-
-  List<Widget> _buildSortOptions(String? selectedOption) {
-    return [
-      RadioListTile<String>(
-        title: const Text('Alphabetical'),
-        value: 'alphabet',
-        groupValue: selectedOption,
-        onChanged: (value) => selectedOption = value,
-      ),
-      RadioListTile<String>(
-        title: const Text('Duration'),
-        value: 'duration',
-        groupValue: selectedOption,
-        onChanged: (value) => selectedOption = value,
-      ),
-      RadioListTile<String>(
-        title: const Text('Due Date'),
-        value: 'dueDate',
-        groupValue: selectedOption,
-        onChanged: (value) => selectedOption = value,
-      ),
-      RadioListTile<String>(
-        title: const Text('Process'),
-        value: 'process',
-        groupValue: selectedOption,
-        onChanged: (value) => selectedOption = value,
-      ),
-      RadioListTile<String>(
-        title: const Text('Category'),
-        value: 'category',
-        groupValue: selectedOption,
-        onChanged: (value) => selectedOption = value,
-      ),
-      RadioListTile<String>(
-        title: const Text('Budget Amount'),
-        value: 'budgetAmount',
-        groupValue: selectedOption,
-        onChanged: (value) => selectedOption = value,
-      ),
-    ];
   }
 
   // ==========Search Content ==========
@@ -548,7 +755,7 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
         keyboardType: TextInputType.text,
         controller: _searchController,
         decoration: InputDecoration(
-          hintText: 'Search...',
+          hintText: 'Search by name... ',
           prefixIcon: Icon(Icons.search),
           suffixIcon: Padding(
             padding: const EdgeInsets.only(right: 8.0),
@@ -556,6 +763,7 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
+                if (_searchController.text.isNotEmpty)
                 GestureDetector(
                   onTap: () {
                     setState(() {
@@ -565,7 +773,7 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
                   },
                   child: const Icon(Icons.arrow_back),
                 ),
-                const SizedBox(width: 8.0),
+                if (_searchController.text.isEmpty)
                 GestureDetector(
                   onTap: () {
                     setState(() {
@@ -596,13 +804,304 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
     );
   }
 
+  // ============= Filtering Content ================
+
+  // Extension on each Title in filtering
+  final Map<String, bool> _expandedSections = {
+    'categories': true,
+    'amount_range': false,
+    'date_range': false,
+  };
+
+  // ============ Categories Filter ==============
+  Widget _buildCategoriesFilter(List<String> selected, List<String> all, StateSetter setState){
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildCategoriesDialogTitle(setState),
+        if (_expandedSections['categories']!) ...[
+          const SizedBox(height: 8),
+          _buildCategoriesFilterContent(all, selected, setState),
+        ]
+      ],
+    );
+  }
+
+  Widget _buildCategoriesDialogTitle(StateSetter catSetState){
+    return InkWell(
+      onTap: (){
+        catSetState(() {
+          _expandedSections['categories'] = !_expandedSections['categories']!;
+        });
+      },
+      child: Row(
+        children: [
+          Text(
+            'Categories',
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 25,
+            ),
+          ),
+          Icon(
+            _expandedSections['categories']!
+                ? Icons.expand_less
+                : Icons.expand_more,
+          ),
+        ]
+      ),
+    );
+  }
+
+  Widget _buildCategoriesFilterContent(List<String> allCategories, List<String> selectedCategories, StateSetter catSetState){
+
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: allCategories.map((category) {
+        final isSelected = selectedCategories.contains(category);
+        return FilterChip(
+          label: Text(category),
+          selected: isSelected,
+          onSelected: (selectedVal) {
+            catSetState(() {
+              if (selectedVal) {
+                selectedCategories.add(category);
+              } else {
+                selectedCategories.remove(category);
+              }
+            });
+          },
+          selectedColor: CategoryUtils.getCategoryColor(category).withOpacity(0.2),
+          checkmarkColor: CategoryUtils.getCategoryColor(category),
+          backgroundColor: Colors.grey[200],
+          labelStyle: TextStyle(
+            color: isSelected
+                ? CategoryUtils.getCategoryColor(category)
+                : Colors.black,
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  // =============== Amount range ==================
+  Widget _buildAmountRangeFilter(StateSetter setState){
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildAmountRangeTitle(setState),
+        if (_expandedSections['amount_range']!)...[
+          const SizedBox(height: 8),
+          _buildAmountRangeFilterContent(setState),
+        ]
+      ],
+    );
+  }
+
+  Widget _buildAmountRangeTitle(StateSetter amtSetState){
+    return InkWell(
+      onTap: (){
+        amtSetState(() {
+          _expandedSections['amount_range'] = !_expandedSections['amount_range']!;
+        });
+      },
+      child: Row(
+          children: [
+            Text(
+              'Amount Range',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 25,
+              ),
+            ),
+            Icon(
+              _expandedSections['amount_range']!
+                  ? Icons.expand_less
+                  : Icons.expand_more,
+            ),
+          ]
+      ),
+    );
+  }
+
+  Widget _buildAmountRangeFilterContent(StateSetter amtSetState){
+    return Column(
+      children: [
+        TextField(
+          controller: _minAmountController,
+          decoration: InputDecoration(
+            labelText: 'Min Amount (RM)',
+            border: const OutlineInputBorder(),
+            errorText: _minAmountError,
+          ),
+          keyboardType: TextInputType.numberWithOptions(decimal: true),
+          inputFormatters: [
+            FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}')),
+            TextInputFormatter.withFunction((oldValue, newValue) {
+              // Auto-format to 2 decimal places
+              if (newValue.text.contains('.')) {
+                final parts = newValue.text.split('.');
+                if (parts[1].length > 2) {
+                  return oldValue;
+                }
+              }
+              return newValue;
+            }),
+          ],
+          onChanged: (value) {
+            _validateAmounts(value, _maxAmountController.text, amtSetState);
+          },
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: _maxAmountController,
+          decoration: InputDecoration(
+            labelText: 'Max Amount (RM)',
+            border: const OutlineInputBorder(),
+            errorText: _maxAmountError,
+          ),
+          keyboardType: TextInputType.number,
+          inputFormatters: [
+            FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}')),
+            TextInputFormatter.withFunction((oldValue, newValue) {
+              // Auto-format to 2 decimal places
+              if (newValue.text.contains('.')) {
+                final parts = newValue.text.split('.');
+                if (parts[1].length > 2) {
+                  return oldValue;
+                }
+              }
+              return newValue;
+            }),
+          ],
+          onChanged: (value) {
+            _validateAmounts(_minAmountController.text, value, amtSetState);
+          },
+        ),
+      ],
+    );
+  }
+
+  // ================ DATE RANGE FILTER ===================
+  Widget _buildDateRangeFilter(StateSetter setState){
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildDateRangeTitle(setState),
+        if (_expandedSections['date_range']!)...[
+          const SizedBox(height: 8),
+          _buildDateRangeFilterContent(setState),
+        ]
+      ],
+    );
+  }
+
+  Widget _buildDateRangeTitle(StateSetter dateSetState){
+    return InkWell(
+      onTap: (){
+        dateSetState(() {
+          _expandedSections['date_range'] = !_expandedSections['date_range']!;
+        });
+      },
+      child: Row(
+          children: [
+            Text(
+              'Date Range',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 25,
+              ),
+            ),
+            Icon(
+              _expandedSections['date_range']!
+                  ? Icons.expand_less
+                  : Icons.expand_more,
+            ),
+          ]
+      ),
+    );
+  }
+
+  Widget _buildDateRangeFilterContent(StateSetter dateSetState) {
+    return Column(
+      children: [
+        TextField(
+          controller: _startDateController,
+          readOnly: true,
+          decoration: InputDecoration(
+            labelText: 'Start Date',
+            suffixIcon: Icon(Icons.calendar_today),
+            border: OutlineInputBorder(),
+            errorText: _startDateError,
+          ),
+          onTap: () async {
+            final pickedDate = await showDatePicker(
+              context: context,
+              initialDate: _filterStartDate ?? DateTime.now(),
+              firstDate: DateTime(2000),
+              lastDate: DateTime(2100),
+            );
+            if (pickedDate != null) {
+              dateSetState(() {
+                _filterStartDate = pickedDate;
+                _startDateController.text =
+                    DateFormat('dd/MM/yyyy').format(pickedDate);
+                _validateDateRange();
+              });
+            }
+          },
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: _endDateController,
+          readOnly: true,
+          decoration: InputDecoration(
+            labelText: 'End Date',
+            suffixIcon: Icon(Icons.calendar_today),
+            border: OutlineInputBorder(),
+            errorText: _endDateError,
+          ),
+          onTap: () async {
+            final pickedDate = await showDatePicker(
+              context: context,
+              initialDate: _filterEndDate ?? DateTime.now(),
+              firstDate: DateTime(2000),
+              lastDate: DateTime(2100),
+            );
+            if (pickedDate != null) {
+              dateSetState(() {
+                _filterEndDate = pickedDate;
+                _endDateController.text =
+                    DateFormat('dd/MM/yyyy').format(pickedDate);
+                _validateDateRange();
+              });
+            }
+          },
+        ),
+        const SizedBox(height: 8),
+        if (_filterStartDate != null || _filterEndDate != null)...[
+          TextButton(
+            onPressed: () {
+              dateSetState(() {
+                _filterStartDate = null;
+                _filterEndDate = null;
+                _startDateController.clear();
+                _endDateController.clear();
+                _startDateError = null;
+                _endDateError = null;
+              });
+            },
+            child: const Text('Clear Date Range'),
+          ),
+        ],
+      ],
+    );
+  }
+
   // ========== Budget Content ==========
   Widget _buildBudgetContent(List<BudgetModel> budgets) {
-    // Get date range from the FIRST budget (assuming same month for all)
-    final budgetMonth = budgets.isNotEmpty
-        ? DateTime(budgets.first.startDate.year, budgets.first.startDate.month)
-        : DateTime.now();
-
+    String statusTab = '';
     return StreamBuilder<QuerySnapshot>(
       stream: _firestore
           .collection('transactions')
@@ -615,13 +1114,52 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
         }
 
         if (budgets.isEmpty) {
-          return _buildEmptyState();
+          switch (_activeTabIndex){
+            case 0:
+              statusTab = 'All';
+              break;
+            case 1:
+              statusTab = 'Active';
+              break;
+            case 2:
+              statusTab = 'Completed';
+              break;
+            case 3:
+              statusTab = 'Failed';
+              break;
+            case 4:
+              statusTab = 'Stopped';
+              break;
+            case 5:
+              statusTab = 'Deleted';
+              break;
+          }
+          return _buildEmptyState(statusTab);
         }
 
-        final spendingData = _calculateSpendingData(
-          transactionSnapshot.data?.docs,
-          budgets,
+        final budgetCategories = budgets.map((b) => b.budgetCategory).toSet().toList();
+
+        // Use filter dates (fallback to budget dates if filter dates not set)
+        final startDate = _filterStartDate ?? budgets.fold<DateTime>(
+            DateTime.now(),
+                (prev, budget) => budget.startDate.isBefore(prev) ? budget.startDate : prev
         );
+
+        final endDate = _filterEndDate ?? budgets.fold<DateTime>(
+            DateTime.now(),
+                (prev, budget) => budget.endDate.isAfter(prev) ? budget.endDate : prev
+        );
+
+        // For calculate expenses correctly
+        final expenses = transactionSnapshot.data!.docs
+            .map((doc) => TransactionModel.fromFirestore(doc))
+            .where((txn) =>
+              budgetCategories.contains(txn.category) &&
+              txn.date.isAfter(startDate.subtract(const Duration(seconds: 1))) &&
+              txn.date.isBefore(endDate.add(const Duration(seconds: 1))))
+            .toList();
+
+        final spendingData = _calculateSpendingData(expenses, budgets);
 
         return SingleChildScrollView(
           padding: const EdgeInsets.all(16.0),
@@ -643,49 +1181,45 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
   }
 
   // ========== Helper Methods ==========
-  SpendingData _calculateSpendingData(
-      List<QueryDocumentSnapshot>? transactionDocs,
-      List<BudgetModel> budgets,) {
+  SpendingData _calculateSpendingData(List<TransactionModel>? transactionList, List<BudgetModel> budgets) {
     Map<String, double> spentPerCategory = {};
+    Map<String, double> spentPerBudget = {};
     double totalSpent = 0;
 
-    if (transactionDocs != null) {
-      final allTransactions = transactionDocs
-          .map((doc) => TransactionModel.fromFirestore(doc))
-          .toList();
-
+    if (transactionList != null) {
       // Define the first and last day of the selected month
       final firstDay = DateTime(_selectedDate.year, _selectedDate.month, 1);
       final lastDay = DateTime(
           _selectedDate.year, _selectedDate.month + 1, 0, 23, 59, 59);
 
       // Filter transactions for the selected month
-      final currentMonthTransactions = allTransactions.where((txn) =>
+      final currentMonthTransactions = transactionList.where((txn) =>
       txn.date.isAfter(firstDay.subtract(const Duration(seconds: 1))) &&
           txn.date.isBefore(lastDay.add(const Duration(seconds: 1)))).toList();
 
       // Calculate total spent using filtered transactions
-      totalSpent =
-          currentMonthTransactions.fold(0, (sum, txn) => sum + txn.amount);
+      totalSpent = currentMonthTransactions.fold(0, (total, txn) => total + txn.amount);
 
       // Calculate spent per category using filtered transactions
       for (var transaction in currentMonthTransactions) {
+
         spentPerCategory[transaction.category] =
             (spentPerCategory[transaction.category] ?? 0) + transaction.amount;
       }
     }
 
     double totalAllocated = budgets.fold(
-        0, (sum, item) => sum + item.targetAmount);
+        0, (total, item) => total + item.targetAmount);
 
     return SpendingData(
       totalAllocated: totalAllocated,
       totalSpent: totalSpent,
       spentPerCategory: spentPerCategory,
+      //spentPerBudget: spentPerBudget,
     );
   }
 
-  // ========== UI Components ==========
+    // ========== UI Components ==========
   Widget _buildErrorState(dynamic error) {
     return Center(child: Text('Error: $error'));
   }
@@ -694,7 +1228,7 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
     return const Center(child: CircularProgressIndicator());
   }
 
-  Widget _buildEmptyState() {
+  Widget _buildEmptyState(String statusFilter) {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -705,8 +1239,10 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
             color: Colors.grey[400],
           ),
           const SizedBox(height: 16),
-          const Text(
-            'No Budgets Yet',
+          Text(
+            statusFilter == 'All'
+                ? 'No Budgets Yet'
+                : 'No $statusFilter Budgets',
             style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.bold,
@@ -725,6 +1261,7 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
 
   Widget _buildCreateBudgetButton() {
     return FloatingActionButton(
+      shape: CircleBorder(),
       onPressed: () {
         Navigator.pushNamed(
           context,
@@ -816,23 +1353,29 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
     );
   }
 
-  Widget _buildBudgetList(List<BudgetModel> budgets,
-      Map<String, double> spentPerCategory) {
+  Widget _buildBudgetList(List<BudgetModel> budgets, Map<String, double> spentPerCategory) {
+    final sortedBudgets = SortingUtils.sortBudgets(
+      budgets: budgets,
+      options: _sortingOptions,
+      spentPerCategory: spentPerCategory,
+      currentDate: _selectedDate,
+    );
+
     return ListView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
-      itemCount: budgets.length,
-      itemBuilder: (context, index) =>
-          _buildBudgetItem(budgets[index], spentPerCategory),
+      itemCount: sortedBudgets.length,
+      itemBuilder: (context, index) => _buildBudgetItem(sortedBudgets[index], spentPerCategory),
     );
   }
 
-  Widget _buildBudgetItem(BudgetModel budget,
-      Map<String, double> spentPerCategory) {
+  Widget _buildBudgetItem(BudgetModel budget, Map<String, double> spentPerCategory) {
     final spent = spentPerCategory[budget.budgetCategory] ?? 0.0;
-    final progress = budget.targetAmount > 0
-        ? spent / budget.targetAmount
-        : 0.0;
+    final progress = budget.targetAmount > 0 ? spent / budget.targetAmount : 0.0;
+    final isFailed = progress >= 1.0;
+    final categoryColor = CategoryUtils.getCategoryColor(budget.budgetCategory);
+
+    budget.updateStatus();
 
     return GestureDetector(
       onTap: () => _navigateToBudgetDetail(budget),
@@ -846,56 +1389,117 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
             children: [
               Row(
                 children: [
-                  _buildCategoryIcon(budget),
-                  const SizedBox(width: 12),
-                  Text(
-                    budget.budgetCategory,
-                    style: const TextStyle(
-                        fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
-                  const Spacer(),
-                  IconButton(
-                    icon: const Icon(Icons.edit, size: 20),
-                    onPressed: () => _navigateToEditBudget(budget),
-                  ),
+                  _buildStatusIndicator(budget.status.name),
+                  Spacer(),
+                  _buildRepeatIcon(budget.isRecurring),
                 ],
               ),
+
               const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'RM ${spent.toStringAsFixed(2)} of RM ${budget.targetAmount
-                        .toStringAsFixed(2)}',
-                    style: TextStyle(color: Colors.grey[600]),
-                  ),
-                  Text(
-                    '${(progress * 100).toInt()}%',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: progress > 0.9 ? Colors.red : progress > 0.75
-                          ? Colors.orange
-                          : Colors.black,
-                    ),
-                  ),
-                ],
-              ),
+              _buildBudgetHeader(budget),
+              const SizedBox(height: 16),
+              _buildProgressInfo(spent, budget.targetAmount, progress),
               const SizedBox(height: 8),
-              LinearProgressIndicator(
-                value: progress,
-                backgroundColor: Colors.grey[200],
-                valueColor: AlwaysStoppedAnimation<Color>(
-                  progress > 0.9 ? Colors.red :
-                  progress > 0.75 ? Colors.orange : CategoryUtils
-                      .getCategoryColor(budget.budgetCategory),
-                ),
-                minHeight: 8,
-                borderRadius: BorderRadius.circular(4),
-              ),
+              _buildProgressBar(progress, categoryColor),
+              const SizedBox(height: 4),
+              _buildProgressDetail(spent, budget.targetAmount),
+              const SizedBox(height: 16),
+              _buildBudgetDeadline(budget.startDate, budget.endDate),
             ],
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildStatusIndicator(String status) {
+    Color statusColor;
+    String statusText;
+
+    switch (status.toLowerCase()) {
+      case 'active':
+        statusColor = Colors.green;
+        statusText = 'Active';
+        break;
+      case 'completed':
+        statusColor = Colors.blue;
+        statusText = 'Completed';
+        break;
+      case 'failed':
+        statusColor = Colors.grey;
+        statusText = 'Failed';
+        break;
+      case 'stopped':
+        statusColor = Colors.orange;
+        statusText = 'Stopped';
+        break;
+      case 'deleted':
+        statusColor = Colors.red;
+        statusText = 'Deleted';
+        break;
+      default:
+        statusColor = Colors.black;
+        statusText = 'Unknown';
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: statusColor.withOpacity(0.2),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: statusColor.withOpacity(0.5), width: 1),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.circle,
+            color: statusColor,
+            size: 12,
+          ),
+          const SizedBox(width: 4),
+          Text(
+            statusText,
+            style: TextStyle(
+              color: statusColor,
+              fontWeight: FontWeight.bold,
+              fontSize: 12,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRepeatIcon(bool isRepeat){
+    return Tooltip(
+      message: isRepeat ? 'Repeat Budget' : 'One-time Budget',
+      child: Container(
+        padding: const EdgeInsets.all(4),
+        decoration: BoxDecoration(
+          color: isRepeat
+              ? Colors.purple.withOpacity(0.2)
+              : Colors.grey.withOpacity(0.2),
+          shape: BoxShape.circle,
+        ),
+        child: Icon(
+          Icons.repeat,
+          size: 20,
+          color: isRepeat ? Colors.purple : Colors.grey,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBudgetHeader(BudgetModel budget) {
+    return Row(
+      children: [
+        _buildCategoryIcon(budget),
+        const SizedBox(width: 12),
+        _buildBudgetTitle(budget),
+        const Spacer(),
+        _buildEditButton(budget),
+      ],
     );
   }
 
@@ -914,6 +1518,188 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
     );
   }
 
+  Widget _buildBudgetTitle(BudgetModel budget) {
+    return Row(
+      children: [
+        Text(
+          budget.budgetCategory,
+          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(width: 9),
+        const Text(
+          '-',
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(width: 9),
+        Text(
+          budget.budgetName,
+          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildEditButton(BudgetModel budget) {
+    return IconButton(
+      icon: const Icon(Icons.edit, size: 20),
+      onPressed: () => _navigateToEditBudget(budget),
+    );
+  }
+
+  Widget _buildProgressInfo(double spent, double targetAmount, double progress) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(
+          'RM ${spent.toStringAsFixed(2)} of RM ${targetAmount.toStringAsFixed(2)}',
+          style: TextStyle(color: Colors.grey[600]),
+        ),
+        Text(
+          '${(progress * 100).toInt()}%',
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            color: _getProgressTextColor(progress),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Color _getProgressTextColor(double progress) {
+    if (progress > 0.9) return Colors.red;
+    if (progress > 0.75) return Colors.orange;
+    return Colors.black;
+  }
+
+  Widget _buildProgressBar(double progress, Color categoryColor) {
+    return LinearProgressIndicator(
+      value: progress,
+      backgroundColor: Colors.grey[200],
+      valueColor: AlwaysStoppedAnimation<Color>(
+        _getProgressColor(progress),
+      ),
+      minHeight: 8,
+      borderRadius: BorderRadius.circular(4),
+    );
+  }
+
+  Widget _buildProgressDetail(double spent, double targetAmount,){
+    final remainAmount = targetAmount - spent;
+
+    return Row(
+      children: [
+        Text('Remaining Amount: RM ${remainAmount.toStringAsFixed(2)}',
+          style: TextStyle(
+            fontSize: 16,
+            color: Colors.purple,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Color _getProgressColor(double progress) {
+    if (progress < 0.3) return Colors.green;
+    if (progress < 0.7) return Colors.orange;
+    return Colors.red;
+  }
+
+  Widget _buildBudgetDeadline(DateTime startDate, DateTime endDate) {
+    // Calculate progress values
+    final totalDuration = endDate.difference(startDate);
+    final elapsedDuration = DateTime.now().difference(startDate);
+    final progress = elapsedDuration.inSeconds / totalDuration.inSeconds;
+    final percentage = (progress * 100).clamp(0, 100).toInt();
+
+    // Format dates
+    final startDateFormatted = DateFormat('dd/MM/yyyy').format(startDate);
+    final endDateFormatted = DateFormat('dd/MM/yyyy').format(endDate);
+
+    return Column(
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              '$startDateFormatted until $endDateFormatted',
+              style: TextStyle(
+                color: Colors.grey[600],
+                fontSize: 12,
+              ),
+            ),
+            Text(
+              '$percentage%',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: _getProgressColor(progress),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        LinearProgressIndicator(
+          value: progress,
+          backgroundColor: Colors.grey[200],
+          valueColor: AlwaysStoppedAnimation<Color>(_getProgressColor(progress)),
+          minHeight: 8,
+          borderRadius: BorderRadius.circular(4),
+        ),
+        const SizedBox(height: 4),
+        _buildRemainDays(endDate),
+      ],
+    );
+  }
+
+  Widget _buildRemainDays(DateTime endDate) {
+    final now = DateTime.now();
+    final remainingDuration = endDate.difference(now);
+    final isPast = remainingDuration.isNegative;
+    final totalSeconds = remainingDuration.inSeconds;
+
+    // Calculate all time units
+    final days = remainingDuration.inDays;
+    final hours = remainingDuration.inHours % 24;
+    final minutes = remainingDuration.inMinutes % 60;
+    final seconds = remainingDuration.inSeconds % 60;
+
+    String remainingText;
+    TextStyle textStyle;
+
+    if (isPast) {
+      remainingText = 'Budget has ended';
+      textStyle = TextStyle(fontSize: 16, color: Colors.red);
+    }
+    else if (days > 0) {
+      remainingText = 'Remaining: $days day${days != 1 ? 's' : ''}';
+      textStyle = TextStyle(fontSize: 16, color: Colors.blue);
+    }
+    else if (remainingDuration.inHours > 0) {
+      remainingText = 'Remaining: $hours hour${hours != 1 ? 's' : ''}';
+      textStyle = TextStyle(fontSize: 16, color: Colors.blue);
+    }
+    else if (remainingDuration.inMinutes > 0) {
+      remainingText = 'Remaining: $minutes minute${minutes != 1 ? 's' : ''}';
+      textStyle = TextStyle(fontSize: 16, color: Colors.orange);
+    }
+    else if (totalSeconds > 0) {
+      remainingText = 'Remaining: $seconds second${seconds != 1 ? 's' : ''}';
+      textStyle = TextStyle(fontSize: 16, color: Colors.orange);
+    }
+    else {
+      remainingText = 'Budget has ended';
+      textStyle = TextStyle(fontSize: 16, color: Colors.red);
+    }
+
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Row(
+        children: [
+          Text(remainingText, style: textStyle),
+        ],
+      ),
+    );
+  }
+
   // ========== Bottom Navigation ==========
   BottomNavigationBar _buildBottomNavigationBar() {
     return BottomNavigationBar(
@@ -926,7 +1712,7 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
             icon: Icon(Icons.account_balance_wallet), label: 'Transactions'),
         BottomNavigationBarItem(icon: Icon(Icons.pie_chart), label: 'Budget'),
         BottomNavigationBarItem(icon: Icon(Icons.bar_chart), label: 'Reports'),
-        BottomNavigationBarItem(icon: Icon(Icons.savings), label: 'Savings'),
+        BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
       ],
     );
   }
@@ -934,14 +1720,18 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
   // ========== Navigation Methods ==========
   void _handleBottomNavigationTap(int index) {
     if (index == 0) {
-      Navigator.pushReplacementNamed(context, '/home');
-    } else if (index == 1) {
-      Navigator.pushReplacementNamed(context, '/transactions');
-    } else if (index == 3) {
-      Navigator.pushReplacementNamed(context, '/reports_overview');
-    } else if (index == 4) {
-      Navigator.pushReplacementNamed(context, '/savings_goal');
-    } else {
+      Navigator.pushNamed(context, '/home');
+    }
+    else if (index == 1) {
+      Navigator.pushNamed(context, '/transactions');
+    }
+    else if (index == 3) {
+      Navigator.pushNamed(context, '/reports_overview');
+    }
+    else if (index == 4) {
+      Navigator.pushNamed(context, '/profile');
+    }
+    else {
       setState(() => _currentIndex = index);
     }
   }
@@ -958,13 +1748,19 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
   }
 
   void _navigateToBudgetDetail(BudgetModel budget) {
-    Navigator.pushNamed(context, '/budget_detail');
+    Navigator.pushNamed(
+      context,
+      '/budget_detail',
+      arguments: {
+      'budget': budget,
+      'selectedDate': _selectedDate,
+      },
+    );
   }
 
   void _navigateToBudgetHistory() {
     Navigator.pushNamed(context, '/budget_history');
   }
-
 
   // ========== Month Picker ==========
   Future<void> _selectMonth(BuildContext context) async {
@@ -986,10 +1782,12 @@ class SpendingData {
   final double totalAllocated;
   final double totalSpent;
   final Map<String, double> spentPerCategory;
+  //final Map<String, double> spentPerBudget;
 
   SpendingData({
     required this.totalAllocated,
     required this.totalSpent,
     required this.spentPerCategory,
+    //required this.spentPerBudget,
   });
 }

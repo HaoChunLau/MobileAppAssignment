@@ -64,4 +64,21 @@ class CategoryUtils {
         return Colors.grey;
     }
   }
+
+  static const Map<String, String> categoryPrefixes = {
+    'Food': 'BFID',
+    'Transportation': 'BTID',
+    'Entertainment': 'BEID',
+    'Utilities': 'BUID',
+    'Housing': 'BHID',
+    'Healthcare': 'BHCID',
+    'Shopping': 'BSID',
+    'Education': 'BEDID',
+    'Personal': 'BPID',
+    'Other': 'BOID',
+  };
+
+  static String getCategoryPrefix(String category) {
+    return categoryPrefixes[category] ?? 'BGEN'; // Default prefix
+  }
 }

@@ -8,7 +8,7 @@ enum DurationCategory { daily, weekly, monthly, custom; @override String toStrin
 enum Status { active, completed, failed, stopped, deleted; @override String toString() => name; }
 
 class BudgetModel {
-  String? budgetId;
+  String budgetId;
   String budgetCategory;
   String budgetName;
   double targetAmount;    //user set
@@ -33,7 +33,7 @@ class BudgetModel {
   bool get isFailed => status == Status.failed;
   
   BudgetModel({
-    this.budgetId,
+    required this.budgetId,
     required this.budgetCategory,
     required this.budgetName,
     required this.targetAmount,

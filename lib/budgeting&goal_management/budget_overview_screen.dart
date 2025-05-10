@@ -498,10 +498,10 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
 
   //========= Tab control ========
   Widget _buildAllBudgetsTab() {
-    List<String> _selectedStatuses = ['active', 'completed', 'failed', 'stopped', 'deleted'];
+    List<String> selectedStatuses = ['active', 'completed', 'failed', 'stopped', 'deleted'];
 
     return StreamBuilder<QuerySnapshot>(
-      stream: getBudgetStream(_selectedDate, statuses: _selectedStatuses),
+      stream: getBudgetStream(_selectedDate, statuses: selectedStatuses),
       builder: (context, snapshot) {
         List<BudgetModel> budgets = (snapshot.data?.docs ?? [])
             .map((doc) {
@@ -524,9 +524,9 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
   }
 
   Widget _buildActiveBudgetsTab() {
-    List<String> _selectedStatuses = ['active'];
+    List<String> selectedStatuses = ['active'];
     return StreamBuilder<QuerySnapshot>(
-      stream: getBudgetStream(_selectedDate, statuses: _selectedStatuses),
+      stream: getBudgetStream(_selectedDate, statuses: selectedStatuses),
       builder: (context, snapshot) {
         // Filtered content for active budgets
         List<BudgetModel> activeBudgets = (snapshot.data?.docs ?? [])
@@ -547,9 +547,9 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
   }
 
   Widget _buildCompletedBudgetsTab() {
-    List<String> _selectedStatuses = ['completed'];
+    List<String> selectedStatuses = ['completed'];
     return StreamBuilder<QuerySnapshot>(
-      stream: getBudgetStream(_selectedDate, statuses: _selectedStatuses),
+      stream: getBudgetStream(_selectedDate, statuses: selectedStatuses),
       builder: (context, snapshot) {
         // Filtered content for completed budgets
         List<BudgetModel> completedBudgets = (snapshot.data?.docs ?? [])
@@ -570,9 +570,9 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
   }
 
   Widget _buildFailedBudgetsTab() {
-    List<String> _selectedStatuses = ['failed'];
+    List<String> selectedStatuses = ['failed'];
     return StreamBuilder<QuerySnapshot>(
-      stream: getBudgetStream(_selectedDate, statuses: _selectedStatuses),
+      stream: getBudgetStream(_selectedDate, statuses: selectedStatuses),
       builder: (context, snapshot) {
         // Filtered content for failed budgets
         List<BudgetModel> failedBudgets = (snapshot.data?.docs ?? [])
@@ -593,10 +593,10 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
   }
 
   Widget _buildStoppedBudgetsTab() {
-    List<String> _selectedStatuses = ['stopped'];
+    List<String> selectedStatuses = ['stopped'];
 
     return StreamBuilder<QuerySnapshot>(
-      stream: getBudgetStream(_selectedDate, statuses: _selectedStatuses),
+      stream: getBudgetStream(_selectedDate, statuses: selectedStatuses),
       builder: (context, snapshot) {
         // Filtered content for stopped budgets
         List<BudgetModel> stoppedBudgets = (snapshot.data?.docs ?? [])
@@ -617,9 +617,9 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
   }
 
   Widget _buildDeletedBudgetsTab() {
-    List<String> _selectedStatuses = ['deleted'];
+    List<String> selectedStatuses = ['deleted'];
     return StreamBuilder<QuerySnapshot>(
-      stream: getBudgetStream(_selectedDate, statuses: _selectedStatuses),
+      stream: getBudgetStream(_selectedDate, statuses: selectedStatuses),
       builder: (context, snapshot) {
         // Filtered content for active budgets
         List<BudgetModel> deletedBudgets = (snapshot.data?.docs ?? [])

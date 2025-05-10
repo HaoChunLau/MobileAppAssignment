@@ -1,5 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:mobile_app_assignment/models/transaction_model.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
+import 'dart:io';
 
 class ExportScreen extends StatefulWidget {
   const ExportScreen({super.key});
@@ -18,12 +24,17 @@ class ExportScreenState extends State<ExportScreen> {
   final Set<String> _selectedData = {'Expenses', 'Income'};
   bool _includeCategories = true;
   bool _includeNotes = true;
+  bool _isExporting = false;
+  String _errorMessage = '';
 
-  // Available data types
-  final List<String> _dataTypes = ['Expenses', 'Income', 'Budget', 'Savings'];
-  
-  // Available file formats
-  final List<String> _fileFormats = ['CSV', 'PDF', 'Excel'];
+  // Available data types (removed Budget and Savings for now)
+  final List<String> _dataTypes = ['Expenses', 'Income'];
+
+  // Available file formats (only CSV is implemented for now)
+  final List<String> _fileFormats = ['CSV'];
+
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   @override
   Widget build(BuildContext context) {
@@ -36,6 +47,14 @@ class ExportScreenState extends State<ExportScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            if (_errorMessage.isNotEmpty)
+              Padding(
+                padding: EdgeInsets.only(bottom: 16.0),
+                child: Text(
+                  _errorMessage,
+                  style: TextStyle(color: Colors.red),
+                ),
+              ),
             _buildFileFormatSection(),
             SizedBox(height: 20),
             _buildDateRangeSection(),
@@ -157,7 +176,7 @@ class ExportScreenState extends State<ExportScreen> {
         );
       },
     );
-    
+
     if (picked != null) {
       setState(() {
         _dateRange = picked;
@@ -243,31 +262,53 @@ class ExportScreenState extends State<ExportScreen> {
 
   Widget _buildExportButton() {
     return ElevatedButton(
-      onPressed: _exportData,
+      onPressed: _isExporting ? null : _exportData,
       style: ElevatedButton.styleFrom(
         minimumSize: Size(double.infinity, 50),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12),
         ),
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.download),
-          SizedBox(width: 8),
-          Text(
-            'Export Data',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
+      child: _isExporting
+          ? Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                  ),
+                ),
+                SizedBox(width: 8),
+                Text(
+                  'Exporting...',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            )
+          : Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.download),
+                SizedBox(width: 8),
+                Text(
+                  'Export Data',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
             ),
-          ),
-        ],
-      ),
     );
   }
 
-  void _exportData() {
+  Future<void> _exportData() async {
     // Show export options summary
     showDialog(
       context: context,
@@ -280,8 +321,8 @@ class ExportScreenState extends State<ExportScreen> {
             _buildSummaryItem('File Format', _fileFormat),
             SizedBox(height: 8),
             _buildSummaryItem(
-              'Date Range', 
-              '${DateFormat('MMM d, y').format(_dateRange.start)} - ${DateFormat('MMM d, y').format(_dateRange.end)}'
+              'Date Range',
+              '${DateFormat('MMM d, y').format(_dateRange.start)} - ${DateFormat('MMM d, y').format(_dateRange.end)}',
             ),
             SizedBox(height: 8),
             _buildSummaryItem('Data Types', _selectedData.join(', ')),
@@ -297,16 +338,113 @@ class ExportScreenState extends State<ExportScreen> {
             child: Text('Cancel'),
           ),
           ElevatedButton(
-            onPressed: () {
-              // Here you would actually perform the export operation
+            onPressed: () async {
               Navigator.pop(context);
-              _showExportSuccessDialog();
+              await _performExport();
             },
             child: Text('Confirm Export'),
           ),
         ],
       ),
     );
+  }
+
+  Future<void> _performExport() async {
+    setState(() {
+      _isExporting = true;
+      _errorMessage = '';
+    });
+
+    try {
+      final userId = _auth.currentUser?.uid;
+      if (userId == null) {
+        setState(() {
+          _isExporting = false;
+          _errorMessage = 'No user logged in';
+        });
+        return;
+      }
+
+      // Fetch transactions from Firestore
+      final querySnapshot = await _firestore
+          .collection('transactions')
+          .where('userId', isEqualTo: userId)
+          .where('date', isGreaterThanOrEqualTo: Timestamp.fromDate(_dateRange.start))
+          .where('date', isLessThanOrEqualTo: Timestamp.fromDate(_dateRange.end))
+          .get();
+
+      List<TransactionModel> transactions = querySnapshot.docs
+          .map((doc) => TransactionModel.fromFirestore(doc))
+          .where((transaction) {
+            if (_selectedData.contains('Expenses') && _selectedData.contains('Income')) {
+              return true;
+            } else if (_selectedData.contains('Expenses')) {
+              return transaction.isExpense;
+            } else if (_selectedData.contains('Income')) {
+              return !transaction.isExpense;
+            }
+            return false;
+          })
+          .toList();
+
+      if (transactions.isEmpty) {
+        setState(() {
+          _isExporting = false;
+          _errorMessage = 'No transactions found for the selected date range and data types';
+        });
+        return;
+      }
+
+      // Generate CSV content
+      StringBuffer csvContent = StringBuffer();
+      // Write headers
+      List<String> headers = ['Date', 'Type', 'Amount'];
+      if (_includeCategories) {
+        headers.add('Category');
+      }
+      if (_includeNotes) {
+        headers.add('Notes');
+      }
+      csvContent.writeln(headers.join(','));
+
+      // Write data rows
+      for (var transaction in transactions) {
+        List<String> row = [
+          DateFormat('yyyy-MM-dd').format(transaction.date),
+          transaction.isExpense ? 'Expense' : 'Income',
+          transaction.amount.toStringAsFixed(2),
+        ];
+        if (_includeCategories) {
+          row.add(transaction.category);
+        }
+        if (_includeNotes) {
+          row.add('"${(transaction.notes ?? '').replaceAll('"', '""')}"'); // Escape quotes in notes
+        }
+        csvContent.writeln(row.join(','));
+      }
+
+      // Save the CSV file to temporary directory
+      final tempDir = await getTemporaryDirectory();
+      final fileName = 'transactions_${DateFormat('yyyyMMdd_HHmmss').format(DateTime.now())}.csv';
+      final filePath = '${tempDir.path}/$fileName';
+      final file = File(filePath);
+      await file.writeAsString(csvContent.toString());
+
+      // Share the file
+      await Share.shareXFiles([XFile(filePath)], text: 'Here is your exported financial data');
+
+      setState(() {
+        _isExporting = false;
+      });
+
+      // Show success dialog
+      _showExportSuccessDialog();
+    } catch (e) {
+      setState(() {
+        _isExporting = false;
+        _errorMessage = 'Failed to export data: $e';
+      });
+    }
   }
 
   Widget _buildSummaryItem(String label, String value) {
@@ -334,7 +472,7 @@ class ExportScreenState extends State<ExportScreen> {
           ],
         ),
         content: Text(
-          'Your data has been exported successfully as $_fileFormat file.',
+          'Your data has been exported successfully as $_fileFormat file and shared.',
         ),
         actions: [
           ElevatedButton(

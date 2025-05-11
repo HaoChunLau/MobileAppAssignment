@@ -1,10 +1,14 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:mobile_app_assignment/models/user_model.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 class ProfileManagementScreen extends StatefulWidget {
   const ProfileManagementScreen({super.key});
@@ -25,6 +29,10 @@ class ProfileManagementScreenState extends State<ProfileManagementScreen> {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final ImagePicker _picker = ImagePicker();
+  GoogleMapController? _mapController;
+  double? _latitude = 3.1390; // Default: Kuala Lumpur
+  double? _longitude = 101.6869; // Default: Kuala Lumpur
+  LatLng? _selectedLocation;
 
   @override
   void initState() {
@@ -34,6 +42,7 @@ class ProfileManagementScreenState extends State<ProfileManagementScreen> {
 
   @override
   void dispose() {
+    _mapController?.dispose();
     _nameController.dispose();
     _emailController.dispose();
     _phoneController.dispose();
@@ -69,6 +78,11 @@ class ProfileManagementScreenState extends State<ProfileManagementScreen> {
         _phoneController.text = user.phoneNumber ?? '';
         _currency = user.currency ?? 'MYR (RM)';
         _photoUrl = user.photoUrl;
+        _latitude = user.latitude ?? 3.1390; // Default KL
+        _longitude = user.longitude ?? 101.6869; // Default KL
+        _selectedLocation = (_latitude != null && _longitude != null)
+            ? LatLng(_latitude!, _longitude!)
+            : null;
         _isLoading = false;
       });
     } catch (e) {
@@ -87,7 +101,6 @@ class ProfileManagementScreenState extends State<ProfileManagementScreen> {
     setState(() => _isLoading = true);
 
     try {
-      // Perform validation - if fails, return early without changing _isEditing
       if (!_validateInputs()) {
         setState(() => _isLoading = false);
         return;
@@ -98,7 +111,6 @@ class ProfileManagementScreenState extends State<ProfileManagementScreen> {
         throw Exception('User not logged in');
       }
 
-      // Check if there are actual changes
       final DocumentSnapshot userDoc =
           await _firestore.collection('users').doc(currentUser.uid).get();
       final UserModel currentData = UserModel.fromFirestore(userDoc);
@@ -106,7 +118,9 @@ class ProfileManagementScreenState extends State<ProfileManagementScreen> {
       final bool hasChanges = _nameController.text != currentData.name ||
           _phoneController.text != currentData.phoneNumber ||
           _currency != currentData.currency ||
-          _photoUrl != currentData.photoUrl;
+          _photoUrl != currentData.photoUrl ||
+          _latitude != currentData.latitude ||
+          _longitude != currentData.longitude;
 
       if (!hasChanges) {
         if (mounted) {
@@ -115,18 +129,19 @@ class ProfileManagementScreenState extends State<ProfileManagementScreen> {
           );
           setState(() {
             _isLoading = false;
-            _isEditing = false; // Exit edit mode if no changes
+            _isEditing = false;
           });
         }
         return;
       }
 
-      // Proceed with update
       await _firestore.collection('users').doc(currentUser.uid).update({
         'name': _nameController.text,
         'phoneNumber': _phoneController.text,
         'currency': _currency,
         'photoUrl': _photoUrl,
+        'latitude': _latitude,
+        'longitude': _longitude,
       });
 
       if (mounted) {
@@ -136,7 +151,6 @@ class ProfileManagementScreenState extends State<ProfileManagementScreen> {
             backgroundColor: Colors.green,
           ),
         );
-        // Only exit editing mode here after successful save
         setState(() {
           _isLoading = false;
           _isEditing = false;
@@ -148,7 +162,6 @@ class ProfileManagementScreenState extends State<ProfileManagementScreen> {
           SnackBar(content: Text('Error updating profile: ${e.toString()}')),
         );
         setState(() => _isLoading = false);
-        // Don't change _isEditing on error
       }
     }
   }
@@ -236,78 +249,78 @@ class ProfileManagementScreenState extends State<ProfileManagementScreen> {
   }
 
   Future<void> _saveBase64Image(String base64Image) async {
-  try {
-    final User? currentUser = _auth.currentUser;
-    if (currentUser == null) return;
+    try {
+      final User? currentUser = _auth.currentUser;
+      if (currentUser == null) return;
 
-    setState(() {
-      _photoUrl = 'data:image/jpeg;base64,$base64Image';
-    });
+      setState(() {
+        _photoUrl = 'data:image/jpeg;base64,$base64Image';
+      });
 
-    // Only update Firestore, not Firebase Auth
-    await _firestore.collection('users').doc(currentUser.uid).update({
-      'photoUrl': 'data:image/jpeg;base64,$base64Image',
-    });
+      // Only update Firestore, not Firebase Auth
+      await _firestore.collection('users').doc(currentUser.uid).update({
+        'photoUrl': 'data:image/jpeg;base64,$base64Image',
+      });
 
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Profile photo updated successfully'),
-          backgroundColor: Colors.green,
-        ),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Profile photo updated successfully'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error saving image: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      setState(() => _isLoading = false);
+    } finally {
+      setState(() => _isLoading = false);
     }
-  } catch (e) {
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error saving image: ${e.toString()}'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
-    setState(() => _isLoading = false);
-  } finally {
-    setState(() => _isLoading = false);
   }
-}
 
   Future<void> _removePhoto() async {
-  setState(() => _isLoading = true);
+    setState(() => _isLoading = true);
 
-  try {
-    final User? currentUser = _auth.currentUser;
-    if (currentUser == null) {
-      throw Exception('User not logged in');
+    try {
+      final User? currentUser = _auth.currentUser;
+      if (currentUser == null) {
+        throw Exception('User not logged in');
+      }
+
+      setState(() {
+        _photoUrl = null;
+        _isLoading = false;
+      });
+
+      // Only update Firestore, not Firebase Auth
+      await _firestore.collection('users').doc(currentUser.uid).update({
+        'photoUrl': null,
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Profile photo removed'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Error removing photo: ${e.toString()}'),
+        ));
+      }
+      setState(() => _isLoading = false);
     }
-
-    setState(() {
-      _photoUrl = null;
-      _isLoading = false;
-    });
-
-    // Only update Firestore, not Firebase Auth
-    await _firestore.collection('users').doc(currentUser.uid).update({
-      'photoUrl': null,
-    });
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Profile photo removed'),
-          backgroundColor: Colors.green,
-        ),
-      );
-    }
-  } catch (e) {
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error removing photo: ${e.toString()}'),
-      ));
-    }
-    setState(() => _isLoading = false);
   }
-}
 
   @override
   Widget build(BuildContext context) {
@@ -340,6 +353,8 @@ class ProfileManagementScreenState extends State<ProfileManagementScreen> {
                     _buildProfileHeader(),
                     const SizedBox(height: 24),
                     _buildPersonalInfoSection(),
+                    const SizedBox(height: 24),
+                    _buildLocationSection(),
                     const SizedBox(height: 24),
                     _buildPreferencesSection(),
                     const SizedBox(height: 24),
@@ -471,6 +486,76 @@ class ProfileManagementScreenState extends State<ProfileManagementScreen> {
                 ),
               ],
             ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildLocationSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildSectionTitle('Location'),
+        const SizedBox(height: 12),
+        Card(
+          elevation: 2,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Column(
+            children: [
+              SizedBox(
+                height: 200,
+                child: GoogleMap(
+                  initialCameraPosition: CameraPosition(
+                    target: _selectedLocation ?? LatLng(3.1390, 101.6869),
+                    zoom: 15,
+                  ),
+                  markers: _selectedLocation != null
+                      ? {
+                          Marker(
+                            markerId: const MarkerId('user_location'),
+                            position: _selectedLocation!,
+                            infoWindow:
+                                const InfoWindow(title: 'Your Location'),
+                          ),
+                        }
+                      : {},
+                  onMapCreated: (GoogleMapController controller) {
+                    _mapController = controller;
+                  },
+                  onTap: _isEditing
+                      ? (LatLng position) {
+                          setState(() {
+                            _selectedLocation = position;
+                            _latitude = position.latitude;
+                            _longitude = position.longitude;
+                          });
+                        }
+                      : null,
+                  gestureRecognizers: _isEditing
+                      ? {
+                          Factory<PanGestureRecognizer>(
+                              () => PanGestureRecognizer()),
+                          Factory<ScaleGestureRecognizer>(
+                              () => ScaleGestureRecognizer()),
+                          Factory<TapGestureRecognizer>(
+                              () => TapGestureRecognizer()),
+                        }
+                      : {},
+                ),
+              ),
+              if (_isEditing)
+                Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: OutlinedButton.icon(
+                    icon: const Icon(Icons.my_location),
+                    label: const Text('Use Current Location'),
+                    onPressed: _setCurrentLocation,
+                  ),
+                ),
+            ],
           ),
         ),
       ],
@@ -822,5 +907,44 @@ class ProfileManagementScreenState extends State<ProfileManagementScreen> {
         );
       }
     }
+  }
+
+  Future<void> _setCurrentLocation() async {
+    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Location services are disabled')),
+      );
+      return;
+    }
+
+    LocationPermission permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Location permission denied')),
+        );
+        return;
+      }
+    }
+
+    if (permission == LocationPermission.deniedForever) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Location permissions are permanently denied')),
+      );
+      return;
+    }
+
+    Position position = await Geolocator.getCurrentPosition();
+    setState(() {
+      _latitude = position.latitude;
+      _longitude = position.longitude;
+      _selectedLocation = LatLng(_latitude!, _longitude!);
+      _mapController?.animateCamera(
+        CameraUpdate.newLatLng(_selectedLocation!),
+      );
+    });
   }
 }

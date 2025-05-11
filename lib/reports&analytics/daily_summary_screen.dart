@@ -60,7 +60,7 @@ class DailySummaryScreenState extends State<DailySummaryScreen> {
       double totalExpense = 0.0;
       List<Map<String, dynamic>> transactions = [];
       Map<String, double> categoryTotals = {
-        for (var category in CategoryUtils.categories) category: 0.0
+        for (var category in CategoryUtils.expenseCategories) category: 0.0
       };
 
       for (var doc in querySnapshot.docs) {

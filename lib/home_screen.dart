@@ -2,6 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:mobile_app_assignment/budgeting&goal_management/budget_overview_screen.dart';
 import 'package:mobile_app_assignment/expense&income_tracking/transactions_screen.dart';
 import 'package:mobile_app_assignment/reports&analytics/reports_overview_screen.dart';
+import 'package:mobile_app_assignment/category_utils.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:intl/intl.dart';
+import 'package:month_picker_dialog/month_picker_dialog.dart';
+import 'package:mobile_app_assignment/models/budget_model.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -13,25 +19,24 @@ class HomeScreen extends StatefulWidget {
 class HomeScreenState extends State<HomeScreen> {
   int _currentIndex = 0;
 
-  // The different screens to show based on bottom navigation bar selection
   final List<Widget> _screens = [
-    HomeContent(),
-    TransactionsScreen(),
-    BudgetOverviewScreen(),
-    ReportsOverviewScreen(),
+    const HomeContent(),
+    const TransactionsScreen(),
+    const BudgetOverviewScreen(),
+    const ReportsOverviewScreen(),
   ];
 
   @override
   Widget build(BuildContext context) {
     return PopScope(
-      canPop: true, // Allow default pop to exit the app
+      canPop: true,
       child: Scaffold(
         appBar: AppBar(
-          title: Text('Clarity Finance'),
+          title: const Text('Clarity Finance'),
           automaticallyImplyLeading: false,
           actions: [
             IconButton(
-              icon: Icon(Icons.settings),
+              icon: const Icon(Icons.settings),
               onPressed: () {
                 Navigator.pushNamed(context, '/settings');
               },
@@ -57,27 +62,12 @@ class HomeScreenState extends State<HomeScreen> {
             }
           },
           type: BottomNavigationBarType.fixed,
-          items: [
-            BottomNavigationBarItem(
-              icon: Icon(Icons.home),
-              label: 'Home',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.account_balance_wallet),
-              label: 'Transactions',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.pie_chart),
-              label: 'Budget',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.bar_chart),
-              label: 'Reports',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.savings), 
-              label: 'Savings',
-            ),
+          items: const [
+            BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
+            BottomNavigationBarItem(icon: Icon(Icons.account_balance_wallet), label: 'Transactions'),
+            BottomNavigationBarItem(icon: Icon(Icons.pie_chart), label: 'Budget'),
+            BottomNavigationBarItem(icon: Icon(Icons.bar_chart), label: 'Reports'),
+            BottomNavigationBarItem(icon: Icon(Icons.savings), label: 'Savings'),
           ],
         ),
       ),
@@ -85,36 +75,175 @@ class HomeScreenState extends State<HomeScreen> {
   }
 }
 
-class HomeContent extends StatelessWidget {
+class HomeContent extends StatefulWidget {
   const HomeContent({super.key});
+
+  @override
+  HomeContentState createState() => HomeContentState();
+}
+
+class HomeContentState extends State<HomeContent> {
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  DateTime _selectedDate = DateTime.now();
+  double totalIncome = 0;
+  double totalExpenses = 0;
+
+  Future<void> _selectMonth(BuildContext context) async {
+    final DateTime? picked = await showMonthPicker(
+      context: context,
+      initialDate: _selectedDate,
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2101),
+    );
+
+    if (picked != null && picked != _selectedDate) {
+      setState(() {
+        _selectedDate = picked;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
-      padding: EdgeInsets.all(16.0),
+      padding: const EdgeInsets.all(16.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildBalanceCard(),
-          SizedBox(height: 20),
-          _buildQuickActions(context),
-          SizedBox(height: 20),
-          _buildRecentTransactions(),
-          SizedBox(height: 20),
-          _buildBudgetSummary(),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Overview - ${DateFormat('MMM yyyy').format(_selectedDate)}',
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.calendar_today),
+                onPressed: () => _selectMonth(context),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          FutureBuilder<Map<String, dynamic>>(
+            future: _fetchHomeData(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              } else if (snapshot.hasError) {
+                return Center(child: Text('Error loading data: ${snapshot.error}'));
+              } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                return const Center(child: Text('No data available'));
+              }
+
+              final data = snapshot.data!;
+              final balance = data['balance'] as double;
+              final recentTransactions = data['recentTransactions'] as List<Map<String, dynamic>>;
+              final budgets = data['budgets'] as List<BudgetModel>;
+
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildBalanceCard(balance),
+                  const SizedBox(height: 20),
+                  _buildQuickActions(context),
+                  const SizedBox(height: 20),
+                  _buildRecentTransactions(recentTransactions),
+                  const SizedBox(height: 20),
+                  _buildBudgetSummary(budgets),
+                ],
+              );
+            },
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildBalanceCard() {
+  Future<Map<String, dynamic>> _fetchHomeData() async {
+    final userId = _auth.currentUser?.uid;
+    if (userId == null) {
+      throw Exception('No user logged in');
+    }
+
+    final startOfMonth = DateTime(_selectedDate.year, _selectedDate.month, 1);
+    final endOfMonth = DateTime(_selectedDate.year, _selectedDate.month + 1, 0, 23, 59, 59);
+
+    // Fetch transactions
+    final transactionSnapshot = await _firestore
+        .collection('transactions')
+        .where('userId', isEqualTo: userId)
+        .where('date', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfMonth))
+        .where('date', isLessThanOrEqualTo: Timestamp.fromDate(endOfMonth))
+        .get();
+
+    totalIncome = 0;
+    totalExpenses = 0;
+    for (var doc in transactionSnapshot.docs) {
+      final data = doc.data();
+      final amount = (data['amount'] as num).toDouble();
+      if (data['isExpense'] as bool) {
+        totalExpenses += amount;
+      } else {
+        totalIncome += amount;
+      }
+    }
+    final balance = totalIncome - totalExpenses;
+
+    final recentSnapshot = await _firestore
+        .collection('transactions')
+        .where('userId', isEqualTo: userId)
+        .where('date', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfMonth))
+        .where('date', isLessThanOrEqualTo: Timestamp.fromDate(endOfMonth))
+        .orderBy('date', descending: true)
+        .limit(5)
+        .get();
+
+    final recentTransactions = recentSnapshot.docs.map((doc) {
+      final data = doc.data();
+      return {
+        'title': data['title'] as String,
+        'date': (data['date'] as Timestamp).toDate(),
+        'amount': (data['amount'] as num).toDouble(),
+        'isExpense': data['isExpense'] as bool,
+        'category': data['category'] as String,
+      };
+    }).toList();
+
+    // Fetch budgets
+    final budgetSnapshot = await _firestore
+        .collection('budgets')
+        .where('userId', isEqualTo: userId)
+        .where('startDate', isLessThanOrEqualTo: Timestamp.fromDate(endOfMonth))
+        .where('endDate', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfMonth))
+        .where('status', isNotEqualTo: 'deleted')
+        .get();
+
+    final budgets = <BudgetModel>[];
+    for (var doc in budgetSnapshot.docs) {
+      final budget = BudgetModel.fromFirestore(doc);
+      await budget.updateCurrentSpent(_firestore); // Calculate currentSpent
+      budgets.add(budget);
+    }
+
+    return {
+      'balance': balance,
+      'recentTransactions': recentTransactions,
+      'budgets': budgets,
+    };
+  }
+
+  Widget _buildBalanceCard(double balance) {
     return Card(
       elevation: 4,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
       ),
       child: Padding(
-        padding: EdgeInsets.all(16.0),
+        padding: const EdgeInsets.all(16.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -125,22 +254,22 @@ class HomeContent extends StatelessWidget {
                 color: Colors.grey[600],
               ),
             ),
-            SizedBox(height: 8),
+            const SizedBox(height: 8),
             Text(
-              'RM 3,580.42',
-              style: TextStyle(
+              'RM ${balance.toStringAsFixed(2)}',
+              style: const TextStyle(
                 fontSize: 28,
                 fontWeight: FontWeight.bold,
               ),
             ),
-            SizedBox(height: 16),
+            const SizedBox(height: 16),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                _buildBalanceItem('Income', 'RM 5,240.00', Colors.green),
-                _buildBalanceItem('Expense', 'RM 1,659.58', Colors.red),
+                _buildBalanceItem('Income', 'RM ${totalIncome.toStringAsFixed(2)}', Colors.green),
+                _buildBalanceItem('Expense', 'RM ${totalExpenses.toStringAsFixed(2)}', Colors.red),
               ],
-            )
+            ),
           ],
         ),
       ),
@@ -158,7 +287,7 @@ class HomeContent extends StatelessWidget {
             color: Colors.grey[600],
           ),
         ),
-        SizedBox(height: 4),
+        const SizedBox(height: 4),
         Text(
           amount,
           style: TextStyle(
@@ -175,14 +304,14 @@ class HomeContent extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
+        const Text(
           'Quick Actions',
           style: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.bold,
           ),
         ),
-        SizedBox(height: 12),
+        const SizedBox(height: 12),
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceAround,
           children: [
@@ -204,14 +333,14 @@ class HomeContent extends StatelessWidget {
               context,
               Icons.savings,
               'Add Goal',
-              '/savings_goal',
+              '/savings_add',
               Colors.amber,
             ),
             _buildActionButton(
               context,
               Icons.pie_chart,
               'Budget',
-              '/budget_overview',
+              '/budget_add',
               Colors.blue,
             ),
           ],
@@ -220,8 +349,8 @@ class HomeContent extends StatelessWidget {
     );
   }
 
-  Widget _buildActionButton(BuildContext context, IconData icon, String label,
-      String route, Color color) {
+  Widget _buildActionButton(
+      BuildContext context, IconData icon, String label, String route, Color color) {
     return InkWell(
       onTap: () {
         Navigator.pushNamed(context, route);
@@ -229,7 +358,7 @@ class HomeContent extends StatelessWidget {
       child: Column(
         children: [
           Container(
-            padding: EdgeInsets.all(10),
+            padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
               color: color.withAlpha((0.1 * 255).round()),
               borderRadius: BorderRadius.circular(12),
@@ -240,24 +369,24 @@ class HomeContent extends StatelessWidget {
               color: color,
             ),
           ),
-          SizedBox(height: 8),
+          const SizedBox(height: 8),
           Text(
             label,
-            style: TextStyle(fontSize: 12),
+            style: const TextStyle(fontSize: 12),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildRecentTransactions() {
+  Widget _buildRecentTransactions(List<Map<String, dynamic>> transactions) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(
+            const Text(
               'Recent Transactions',
               style: TextStyle(
                 fontSize: 18,
@@ -265,36 +394,28 @@ class HomeContent extends StatelessWidget {
               ),
             ),
             TextButton(
-              onPressed: () {},
-              child: Text('See All'),
+              onPressed: () {
+                Navigator.pushNamed(context, '/transactions');
+              },
+              child: const Text('See All'),
             ),
           ],
         ),
-        SizedBox(height: 12),
-        _buildTransactionItem(
-          'Groceries',
-          'Yesterday',
-          'RM 85.40',
-          Icons.shopping_cart,
-          Colors.blue,
-          isExpense: true,
-        ),
-        _buildTransactionItem(
-          'Salary',
-          'Mar 15',
-          'RM 4,500.00',
-          Icons.account_balance,
-          Colors.green,
-          isExpense: false,
-        ),
-        _buildTransactionItem(
-          'Restaurant',
-          'Mar 14',
-          'RM 124.80',
-          Icons.restaurant,
-          Colors.orange,
-          isExpense: true,
-        ),
+        const SizedBox(height: 12),
+        if (transactions.isEmpty)
+          const Center(child: Text('No transactions for this month'))
+        else
+          ...transactions.map((transaction) {
+            final category = transaction['category'] as String;
+            return _buildTransactionItem(
+              transaction['title'] as String,
+              _formatDate(transaction['date'] as DateTime),
+              'RM ${transaction['amount'].toStringAsFixed(2)}',
+              CategoryUtils.getCategoryIcon(category),
+              CategoryUtils.getCategoryColor(category),
+              isExpense: transaction['isExpense'] as bool,
+            );
+          }).toList(),
       ],
     );
   }
@@ -304,10 +425,10 @@ class HomeContent extends StatelessWidget {
       {bool isExpense = true}) {
     return Card(
       elevation: 1,
-      margin: EdgeInsets.symmetric(vertical: 4),
+      margin: const EdgeInsets.symmetric(vertical: 4),
       child: ListTile(
         leading: Container(
-          padding: EdgeInsets.all(8),
+          padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
             color: iconColor.withAlpha((0.1 * 255).round()),
             borderRadius: BorderRadius.circular(8),
@@ -330,14 +451,14 @@ class HomeContent extends StatelessWidget {
     );
   }
 
-  Widget _buildBudgetSummary() {
+  Widget _buildBudgetSummary(List<BudgetModel> budgets) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(
+            const Text(
               'Budget Status',
               style: TextStyle(
                 fontSize: 18,
@@ -345,23 +466,34 @@ class HomeContent extends StatelessWidget {
               ),
             ),
             TextButton(
-              onPressed: () {},
-              child: Text('Details'),
+              onPressed: () {
+                Navigator.pushNamed(context, '/budget_overview');
+              },
+              child: const Text('Details'),
             ),
           ],
         ),
-        SizedBox(height: 12),
-        _buildBudgetItem('Food & Drinks', 0.7, Colors.orange),
-        _buildBudgetItem('Transportation', 0.5, Colors.blue),
-        _buildBudgetItem('Entertainment', 0.9, Colors.red),
-        _buildBudgetItem('Utilities', 0.3, Colors.green),
+        const SizedBox(height: 12),
+        if (budgets.isEmpty)
+          const Center(child: Text('No budgets for this month'))
+        else
+          ...budgets.map((budget) {
+            return _buildBudgetItem(
+              budget.budgetCategory,
+              budget.progress,
+              CategoryUtils.getCategoryColor(budget.budgetCategory),
+              totalSpent: budget.currentSpent,
+              totalBudget: budget.targetAmount,
+            );
+          }).toList(),
       ],
     );
   }
 
-  Widget _buildBudgetItem(String category, double progress, Color color) {
+  Widget _buildBudgetItem(String category, double progress, Color color,
+      {required double totalSpent, required double totalBudget}) {
     return Padding(
-      padding: EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.symmetric(vertical: 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -378,7 +510,15 @@ class HomeContent extends StatelessWidget {
               ),
             ],
           ),
-          SizedBox(height: 8),
+          const SizedBox(height: 4),
+          Text(
+            'RM ${totalSpent.toStringAsFixed(2)} of RM ${totalBudget.toStringAsFixed(2)}',
+            style: TextStyle(
+              fontSize: 12,
+              color: Colors.grey[600],
+            ),
+          ),
+          const SizedBox(height: 8),
           LinearProgressIndicator(
             value: progress,
             backgroundColor: Colors.grey[200],
@@ -389,5 +529,18 @@ class HomeContent extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  String _formatDate(DateTime date) {
+    final now = DateTime.now();
+    if (date.year == now.year && date.month == now.month && date.day == now.day) {
+      return 'Today';
+    } else if (date.year == now.year &&
+        date.month == now.month &&
+        date.day == now.day - 1) {
+      return 'Yesterday';
+    } else {
+      return DateFormat('MMM dd').format(date);
+    }
   }
 }

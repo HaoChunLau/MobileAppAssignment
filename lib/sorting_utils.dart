@@ -91,8 +91,8 @@ class SortingUtils {
           return a.startDate.compareTo(b.startDate) * directionMultiplier;
         case SortCategory.category:
         // Sort by predefined category order
-          final indexA = CategoryUtils.categories.indexOf(a.budgetCategory);
-          final indexB = CategoryUtils.categories.indexOf(b.budgetCategory);
+          final indexA = CategoryUtils.expenseCategories.indexOf(a.budgetCategory);
+          final indexB = CategoryUtils.expenseCategories.indexOf(b.budgetCategory);
           if (indexA == -1 || indexB == -1) {
             return (indexA == -1 ? 1 : -1) * directionMultiplier;
           }

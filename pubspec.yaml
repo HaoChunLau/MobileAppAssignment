@@ -40,12 +40,14 @@ dependencies:
   firebase_core: ^3.13.0
   firebase_auth: ^5.5.2
   cloud_firestore: ^5.6.6
-  image_picker: ^1.0.0       # For selecting images from gallery or camera
+  image_picker: ^1.0.0 
   flutter_image_compress: ^2.0.0
   path_provider: ^2.0.11
   month_picker_dialog: ^6.0.2
   table_calendar: ^3.0.9
   share_plus: ^11.0.0
+  google_maps_flutter: ^2.7.0
+  geolocator: ^12.0.0
   
 
 dev_dependencies:

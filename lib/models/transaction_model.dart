@@ -8,8 +8,9 @@ class TransactionModel {
   String category;
   String? notes;
   String userId;
-  bool isExpense; // true for expense, false for income
-  
+  bool isExpense;
+  String? budgetId;
+
   TransactionModel({
     this.id,
     required this.title,
@@ -19,9 +20,9 @@ class TransactionModel {
     this.notes,
     required this.userId,
     required this.isExpense,
+    this.budgetId,
   });
-  
-  // Convert model to Map for storing in Firestore
+
   Map<String, dynamic> toMap() {
     return {
       'title': title,
@@ -31,10 +32,10 @@ class TransactionModel {
       'notes': notes,
       'userId': userId,
       'isExpense': isExpense,
+      'budgetId': budgetId,
     };
   }
-  
-  // Create model from Firestore document
+
   factory TransactionModel.fromFirestore(DocumentSnapshot doc) {
     Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
     return TransactionModel(
@@ -46,6 +47,7 @@ class TransactionModel {
       notes: data['notes'],
       userId: data['userId'] ?? '',
       isExpense: data['isExpense'] ?? true,
+      budgetId: data['budgetId'],
     );
   }
 }

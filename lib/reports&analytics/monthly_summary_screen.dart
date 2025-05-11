@@ -62,7 +62,7 @@ class MonthlySummaryScreenState extends State<MonthlySummaryScreen> {
       double totalIncome = 0.0;
       double totalExpense = 0.0;
       Map<String, double> categoryTotals = {
-        for (var category in CategoryUtils.categories) category: 0.0
+        for (var category in CategoryUtils.expenseCategories) category: 0.0
       };
 
       for (var doc in querySnapshot.docs) {

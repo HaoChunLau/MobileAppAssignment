@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:mobile_app_assignment/category_utils.dart';
 import 'package:mobile_app_assignment/models/transaction_model.dart';
+import 'package:mobile_app_assignment/models/budget_model.dart';
 
 class AddExpenseScreen extends StatefulWidget {
   const AddExpenseScreen({super.key});
@@ -25,9 +26,14 @@ class AddExpenseScreenState extends State<AddExpenseScreen> {
 
   DateTime _selectedDate = DateTime.now();
   String _selectedCategory = 'Food';
+  String? _selectedBudgetId; // Nullable for "No Budget"
+  List<BudgetModel> _budgets = []; // List of available budgets
 
-  // Predefined categories
-  final List<String> _categories = CategoryUtils.categories;
+  @override
+  void initState() {
+    super.initState();
+    _fetchBudgets(); // Fetch budgets when screen loads
+  }
 
   @override
   void dispose() {
@@ -35,6 +41,26 @@ class AddExpenseScreenState extends State<AddExpenseScreen> {
     _amountController.dispose();
     _descriptionController.dispose();
     super.dispose();
+  }
+
+  // Fetch active budgets from Firestore
+  void _fetchBudgets() async {
+    try {
+      final user = _auth.currentUser!;
+      final snapshot = await _firestore
+          .collection('budgets')
+          .where('userId', isEqualTo: user.uid)
+          .where('status', whereIn: ['active', 'failed']) // Include active and failed budgets
+          .get();
+
+      setState(() {
+        _budgets = snapshot.docs.map((doc) => BudgetModel.fromFirestore(doc)).toList();
+      });
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error fetching budgets: ${e.toString()}')),
+      );
+    }
   }
 
   @override
@@ -79,8 +105,7 @@ class AddExpenseScreenState extends State<AddExpenseScreen> {
                         border: OutlineInputBorder(),
                         prefixIcon: Icon(Icons.attach_money),
                       ),
-                      keyboardType:
-                          TextInputType.numberWithOptions(decimal: true),
+                      keyboardType: TextInputType.numberWithOptions(decimal: true),
                       validator: (value) {
                         if (value == null || value.isEmpty) {
                           return 'Please enter an amount';
@@ -126,14 +151,14 @@ class AddExpenseScreenState extends State<AddExpenseScreen> {
                         child: DropdownButton<String>(
                           value: _selectedCategory,
                           isExpanded: true,
-                          items: _categories.map((String category) {
+                          items: CategoryUtils.expenseCategories.map((String category) {
                             return DropdownMenuItem<String>(
                               value: category,
                               child: Row(
                                 children: [
                                   Icon(
-                                    _getCategoryIcon(category),
-                                    color: _getCategoryColor(category),
+                                    CategoryUtils.getCategoryIcon(category),
+                                    color: CategoryUtils.getCategoryColor(category),
                                     size: 20,
                                   ),
                                   SizedBox(width: 8),
@@ -148,6 +173,41 @@ class AddExpenseScreenState extends State<AddExpenseScreen> {
                                 _selectedCategory = newValue;
                               });
                             }
+                          },
+                        ),
+                      ),
+                    ),
+                    SizedBox(height: 16),
+
+                    // Budget dropdown
+                    InputDecorator(
+                      decoration: InputDecoration(
+                        labelText: 'Budget (Optional)',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.account_balance_wallet),
+                      ),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<String?>(
+                          value: _selectedBudgetId,
+                          isExpanded: true,
+                          items: [
+                            DropdownMenuItem<String?>(
+                              value: null,
+                              child: Text('No Budget'),
+                            ),
+                            ..._budgets.map((BudgetModel budget) {
+                              return DropdownMenuItem<String?>(
+                                value: budget.budgetId,
+                                child: Text(
+                                  '${budget.budgetName} (${budget.budgetCategory})',
+                                ),
+                              );
+                            }).toList(),
+                          ],
+                          onChanged: (String? newValue) {
+                            setState(() {
+                              _selectedBudgetId = newValue;
+                            });
                           },
                         ),
                       ),
@@ -206,9 +266,10 @@ class AddExpenseScreenState extends State<AddExpenseScreen> {
   void _submitForm() async {
     if (_formKey.currentState!.validate()) {
       try {
-        setState(() { _isLoading = true; });
+        setState(() {
+          _isLoading = true;
+        });
 
-        // Directly use the already-authenticated user
         final user = _auth.currentUser!;
 
         TransactionModel transaction = TransactionModel(
@@ -221,9 +282,13 @@ class AddExpenseScreenState extends State<AddExpenseScreen> {
               : _descriptionController.text,
           userId: user.uid,
           isExpense: true,
+          budgetId: _selectedBudgetId,
         );
 
         await _firestore.collection('transactions').add(transaction.toMap());
+
+        // Update budget's currentSpent
+        await _updateBudgetCurrentSpent(_selectedBudgetId);
 
         if (!mounted) return;
 
@@ -243,11 +308,31 @@ class AddExpenseScreenState extends State<AddExpenseScreen> {
     }
   }
 
-  Color _getCategoryColor(String category) {
-    return CategoryUtils.getCategoryColor(category);
-  }
+  Future<void> _updateBudgetCurrentSpent(String? budgetId) async {
+    if (budgetId == null) return;
 
-  IconData _getCategoryIcon(String category) {
-    return CategoryUtils.getCategoryIcon(category);
+    final budgetDoc = await _firestore.collection('budgets').doc(budgetId).get();
+    if (!budgetDoc.exists) return;
+
+    final budget = BudgetModel.fromFirestore(budgetDoc);
+
+    final transactions = await _firestore
+        .collection('transactions')
+        .where('userId', isEqualTo: _auth.currentUser?.uid)
+        .where('budgetId', isEqualTo: budgetId)
+        .where('isExpense', isEqualTo: true)
+        .where('date', isGreaterThanOrEqualTo: Timestamp.fromDate(budget.startDate))
+        .where('date', isLessThanOrEqualTo: Timestamp.fromDate(budget.endDate))
+        .get();
+
+    double currentSpent = transactions.docs.fold(0.0, (total, doc) {
+      final amount = (doc.data()['amount'] as num).toDouble();
+      return total + amount;
+    });
+
+    await _firestore.collection('budgets').doc(budgetId).update({
+      'currentSpent': currentSpent,
+      'lastUpdated': FieldValue.serverTimestamp(),
+    });
   }
 }

@@ -13,7 +13,8 @@ class AnalyticsScreen extends StatefulWidget {
   AnalyticsScreenState createState() => AnalyticsScreenState();
 }
 
-class AnalyticsScreenState extends State<AnalyticsScreen> with SingleTickerProviderStateMixin {
+class AnalyticsScreenState extends State<AnalyticsScreen>
+    with SingleTickerProviderStateMixin {
   late TabController _tabController;
   String _timeRange = 'This Month';
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -117,9 +118,25 @@ class AnalyticsScreenState extends State<AnalyticsScreen> with SingleTickerProvi
 
       double totalIncome = 0.0;
       double totalExpense = 0.0;
-      Map<String, double> spendingCategories = { for (var category in CategoryUtils.categories) category: 0.0 };
-      Map<String, double> incomeSources = { 'Salary': 0.0, 'Freelance': 0.0, 'Investments': 0.0, 'Other': 0.0 };
-      Map<String, double> spendingByDay = { 'Mon': 0.0, 'Tue': 0.0, 'Wed': 0.0, 'Thu': 0.0, 'Fri': 0.0, 'Sat': 0.0, 'Sun': 0.0 };
+      Map<String, double> spendingCategories = {
+        for (var category in CategoryUtils.expenseCategories) category: 0.0
+      };
+      spendingCategories['Other'] =
+          0.0; // Explicitly add "Other" for invalid categories
+      Map<String, double> incomeSources = {
+        for (var category in CategoryUtils.incomeCategories) category: 0.0
+      };
+      incomeSources['Other'] =
+          0.0; // Explicitly add "Other" for invalid categories
+      Map<String, double> spendingByDay = {
+        'Mon': 0.0,
+        'Tue': 0.0,
+        'Wed': 0.0,
+        'Thu': 0.0,
+        'Fri': 0.0,
+        'Sat': 0.0,
+        'Sun': 0.0
+      };
       Map<String, double> savingsByMonth = {};
 
       for (int i = 0; i < monthsInRange; i++) {
@@ -136,7 +153,8 @@ class AnalyticsScreenState extends State<AnalyticsScreen> with SingleTickerProvi
         if (isExpense) {
           totalExpense += amount;
           if (spendingCategories.containsKey(transaction.category)) {
-            spendingCategories[transaction.category] = spendingCategories[transaction.category]! + amount;
+            spendingCategories[transaction.category] =
+                spendingCategories[transaction.category]! + amount;
           } else {
             spendingCategories['Other'] = spendingCategories['Other']! + amount;
           }
@@ -162,11 +180,15 @@ class AnalyticsScreenState extends State<AnalyticsScreen> with SingleTickerProvi
         }
       }
 
-      double avgDailySpending = daysInRange > 0 ? totalExpense / daysInRange : 0.0;
-      double avgMonthlyIncome = monthsInRange > 0 ? totalIncome / monthsInRange : 0.0;
-      double savingsRate = (totalIncome > 0) ? (totalIncome - totalExpense) / totalIncome : 0.0;
+      double avgDailySpending =
+          daysInRange > 0 ? totalExpense / daysInRange : 0.0;
+      double avgMonthlyIncome =
+          monthsInRange > 0 ? totalIncome / monthsInRange : 0.0;
+      double savingsRate =
+          (totalIncome > 0) ? (totalIncome - totalExpense) / totalIncome : 0.0;
 
-      double maxSpendingDay = spendingByDay.values.reduce((a, b) => a > b ? a : b);
+      double maxSpendingDay =
+          spendingByDay.values.reduce((a, b) => a > b ? a : b);
       if (maxSpendingDay > 0) {
         spendingByDay.updateAll((key, value) => value / maxSpendingDay);
       }
@@ -397,7 +419,10 @@ class AnalyticsScreenState extends State<AnalyticsScreen> with SingleTickerProvi
                               ),
                             ],
                             minY: 0,
-                            maxY: (_totalSpending > _avgDailySpending * 30 ? _totalSpending : _avgDailySpending * 30) * 1.1,
+                            maxY: (_totalSpending > _avgDailySpending * 30
+                                    ? _totalSpending
+                                    : _avgDailySpending * 30) *
+                                1.1,
                           ),
                         ),
                       ),
@@ -405,8 +430,16 @@ class AnalyticsScreenState extends State<AnalyticsScreen> with SingleTickerProvi
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          _buildStatItem('Total Spent', 'RM ${_totalSpending.toStringAsFixed(2)}', Icons.payments, Colors.red),
-                          _buildStatItem('Avg Daily', 'RM ${_avgDailySpending.toStringAsFixed(2)}', Icons.date_range, Colors.orange),
+                          _buildStatItem(
+                              'Total Spent',
+                              'RM ${_totalSpending.toStringAsFixed(2)}',
+                              Icons.payments,
+                              Colors.red),
+                          _buildStatItem(
+                              'Avg Daily',
+                              'RM ${_avgDailySpending.toStringAsFixed(2)}',
+                              Icons.date_range,
+                              Colors.orange),
                         ],
                       ),
                     ],
@@ -466,9 +499,11 @@ class AnalyticsScreenState extends State<AnalyticsScreen> with SingleTickerProvi
                             sections: _spendingCategories.entries
                                 .where((entry) => entry.value > 0)
                                 .map((entry) => PieChartSectionData(
-                                      color: CategoryUtils.getCategoryColor(entry.key),
+                                      color: CategoryUtils.getCategoryColor(
+                                          entry.key),
                                       value: entry.value,
-                                      title: '${(entry.value / _totalSpending * 100).toStringAsFixed(1)}%',
+                                      title:
+                                          '${(entry.value / _totalSpending * 100).toStringAsFixed(1)}%',
                                       radius: 80,
                                       titleStyle: TextStyle(
                                         fontSize: 12,
@@ -493,7 +528,8 @@ class AnalyticsScreenState extends State<AnalyticsScreen> with SingleTickerProvi
                                     Container(
                                       width: 12,
                                       height: 12,
-                                      color: CategoryUtils.getCategoryColor(entry.key),
+                                      color: CategoryUtils.getCategoryColor(
+                                          entry.key),
                                     ),
                                     SizedBox(width: 4),
                                     Text(entry.key),
@@ -563,14 +599,22 @@ class AnalyticsScreenState extends State<AnalyticsScreen> with SingleTickerProvi
                                   color: Colors.black,
                                 );
                                 switch (value.toInt()) {
-                                  case 0: return Text('Mon', style: style);
-                                  case 1: return Text('Tue', style: style);
-                                  case 2: return Text('Wed', style: style);
-                                  case 3: return Text('Thu', style: style);
-                                  case 4: return Text('Fri', style: style);
-                                  case 5: return Text('Sat', style: style);
-                                  case 6: return Text('Sun', style: style);
-                                  default: return Text('');
+                                  case 0:
+                                    return Text('Mon', style: style);
+                                  case 1:
+                                    return Text('Tue', style: style);
+                                  case 2:
+                                    return Text('Wed', style: style);
+                                  case 3:
+                                    return Text('Thu', style: style);
+                                  case 4:
+                                    return Text('Fri', style: style);
+                                  case 5:
+                                    return Text('Sat', style: style);
+                                  case 6:
+                                    return Text('Sun', style: style);
+                                  default:
+                                    return Text('');
                                 }
                               },
                             ),
@@ -591,7 +635,8 @@ class AnalyticsScreenState extends State<AnalyticsScreen> with SingleTickerProvi
                               FlSpot(5, _spendingByDay['Sat']! * 100),
                               FlSpot(6, _spendingByDay['Sun']! * 100),
                             ],
-                            isCurved: false, // Changed to false for straight lines
+                            isCurved:
+                                false, // Changed to false for straight lines
                             color: Colors.blue,
                             barWidth: 2,
                             dotData: FlDotData(show: true),
@@ -676,7 +721,10 @@ class AnalyticsScreenState extends State<AnalyticsScreen> with SingleTickerProvi
                               ),
                             ],
                             minY: 0,
-                            maxY: (_totalIncome > _avgMonthlyIncome ? _totalIncome : _avgMonthlyIncome) * 1.1,
+                            maxY: (_totalIncome > _avgMonthlyIncome
+                                    ? _totalIncome
+                                    : _avgMonthlyIncome) *
+                                1.1,
                           ),
                         ),
                       ),
@@ -684,8 +732,16 @@ class AnalyticsScreenState extends State<AnalyticsScreen> with SingleTickerProvi
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          _buildStatItem('Total Income', 'RM ${_totalIncome.toStringAsFixed(2)}', Icons.account_balance, Colors.green),
-                          _buildStatItem('Monthly Avg', 'RM ${_avgMonthlyIncome.toStringAsFixed(2)}', Icons.calendar_today, Colors.blue),
+                          _buildStatItem(
+                              'Total Income',
+                              'RM ${_totalIncome.toStringAsFixed(2)}',
+                              Icons.account_balance,
+                              Colors.green),
+                          _buildStatItem(
+                              'Monthly Avg',
+                              'RM ${_avgMonthlyIncome.toStringAsFixed(2)}',
+                              Icons.calendar_today,
+                              Colors.blue),
                         ],
                       ),
                     ],
@@ -745,9 +801,11 @@ class AnalyticsScreenState extends State<AnalyticsScreen> with SingleTickerProvi
                             sections: _incomeSources.entries
                                 .where((entry) => entry.value > 0)
                                 .map((entry) => PieChartSectionData(
-                                      color: CategoryUtils.getCategoryColor(entry.key),
+                                      color: CategoryUtils.getCategoryColor(
+                                          entry.key),
                                       value: entry.value,
-                                      title: '${(entry.value / _totalIncome * 100).toStringAsFixed(1)}%',
+                                      title:
+                                          '${(entry.value / _totalIncome * 100).toStringAsFixed(1)}%',
                                       radius: 80,
                                       titleStyle: TextStyle(
                                         fontSize: 12,
@@ -772,7 +830,8 @@ class AnalyticsScreenState extends State<AnalyticsScreen> with SingleTickerProvi
                                     Container(
                                       width: 12,
                                       height: 12,
-                                      color: CategoryUtils.getCategoryColor(entry.key),
+                                      color: CategoryUtils.getCategoryColor(
+                                          entry.key),
                                     ),
                                     SizedBox(width: 4),
                                     Text(entry.key),
@@ -852,7 +911,8 @@ class AnalyticsScreenState extends State<AnalyticsScreen> with SingleTickerProvi
                             LinearProgressIndicator(
                               value: _savingsRate,
                               backgroundColor: Colors.grey[200],
-                              valueColor: AlwaysStoppedAnimation<Color>(Colors.green),
+                              valueColor:
+                                  AlwaysStoppedAnimation<Color>(Colors.green),
                               minHeight: 8,
                               borderRadius: BorderRadius.circular(4),
                             ),
@@ -883,7 +943,8 @@ class AnalyticsScreenState extends State<AnalyticsScreen> with SingleTickerProvi
                             LinearProgressIndicator(
                               value: _avgSavingsRate,
                               backgroundColor: Colors.grey[200],
-                              valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
+                              valueColor:
+                                  AlwaysStoppedAnimation<Color>(Colors.blue),
                               minHeight: 8,
                               borderRadius: BorderRadius.circular(4),
                             ),
@@ -949,7 +1010,9 @@ class AnalyticsScreenState extends State<AnalyticsScreen> with SingleTickerProvi
                               getTitlesWidget: (value, meta) {
                                 final months = _savingsByMonth.keys.toList();
                                 if (value.toInt() < months.length) {
-                                  return Text(months[value.toInt()], style: TextStyle(fontSize: 12, color: Colors.black));
+                                  return Text(months[value.toInt()],
+                                      style: TextStyle(
+                                          fontSize: 12, color: Colors.black));
                                 }
                                 return Text('');
                               },
@@ -963,8 +1026,11 @@ class AnalyticsScreenState extends State<AnalyticsScreen> with SingleTickerProvi
                         lineBarsData: [
                           LineChartBarData(
                             spots: _savingsByMonth.entries.map((entry) {
-                              final index = _savingsByMonth.keys.toList().indexOf(entry.key);
-                              return FlSpot(index.toDouble(), entry.value * 100);
+                              final index = _savingsByMonth.keys
+                                  .toList()
+                                  .indexOf(entry.key);
+                              return FlSpot(
+                                  index.toDouble(), entry.value * 100);
                             }).toList(),
                             isCurved: true,
                             color: Colors.green,
@@ -1027,7 +1093,8 @@ class AnalyticsScreenState extends State<AnalyticsScreen> with SingleTickerProvi
     );
   }
 
-  Widget _buildStatItem(String title, String value, IconData icon, Color color) {
+  Widget _buildStatItem(
+      String title, String value, IconData icon, Color color) {
     return Expanded(
       child: Row(
         children: [

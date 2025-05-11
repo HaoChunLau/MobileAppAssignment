@@ -30,7 +30,7 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
   String remark = '';
   late IconData _selectedIcon;
   late Color _selectedColor;
-  late DateTime _focusedDay;  //for calendar
+  late DateTime _focusedDay; //for calendar
   late DateTime _selectedDay; //for calendar
   DateTime _startDate = DateTime.now(); // Default to current date
   late DateTime _endDate;
@@ -47,7 +47,8 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
 
   // ========== INITIALIZATION =========
   @override
-  void initState() {  //set default value
+  void initState() {
+    //set default value
     super.initState();
 
     _focusedDay = DateTime.now();
@@ -58,7 +59,7 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
   void _loadArguments() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final arguments = ModalRoute.of(context)?.settings.arguments;
-      if (arguments == null){
+      if (arguments == null) {
         setState(() {
           _errorMessage = 'No budget data provided';
           _isLoading = false;
@@ -76,7 +77,7 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
         }
       }
 
-      if (budget == null){
+      if (budget == null) {
         setState(() {
           _errorMessage = 'Invalid budget data format';
           _isLoading = false;
@@ -86,7 +87,7 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
 
       setState(() {
         _budget = budget!;
-        category= budget.budgetCategory;
+        category = budget.budgetCategory;
         budgetName = budget.budgetName;
         amount = budget.targetAmount.toStringAsFixed(2);
         remark = budget.remark ?? '';
@@ -126,9 +127,6 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
   // ==========================
   void _handleMenuSelection(String value) {
     switch (value) {
-      case 'settings':
-        Navigator.pushNamed(context, '/settings');
-        break;
       case 'editing':
         _navigateToEditBudget(_budget!);
         break;
@@ -141,12 +139,15 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
       case 'deleting':
         _confirmDeleteBudget();
         break;
+      case 'recreate':
+        _recreateBudget(_budget!);
+        break;
     }
   }
 
-  String _assignedDuration(String duration){
-    switch(duration){
-      case 'daily' :
+  String _assignedDuration(String duration) {
+    switch (duration) {
+      case 'daily':
         return 'Daily';
       case 'weekly':
         return 'Weekly';
@@ -168,11 +169,11 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
     return 20; // Default for larger values
   }
 
-  void _navigateToExpenses(){
+  void _navigateToExpenses() {
     Navigator.pushNamed(context, '/expense_list');
   }
 
-  void _navigateToEditBudget(BudgetModel budget){
+  void _navigateToEditBudget(BudgetModel budget) {
     Navigator.pushNamed(
       context,
       '/budget_edit',
@@ -196,10 +197,11 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
       // 2. Update budget status in local state
       setState(() {
         _status = Status.stopped.name;
-        _stoppedDate: DateTime.now(); // Mark when it was stopped
+        _stoppedDate:
+        DateTime.now(); // Mark when it was stopped
       });
 
-      // 3. Persist to database (example using Firestore)
+      // 3. Persist to database
       await FirebaseFirestore.instance
           .collection('budgets')
           .doc(_budget!.budgetId)
@@ -273,7 +275,8 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Confirm Delete'),
-        content: const Text('Are you sure you want to delete this budget? This action cannot be undone.'),
+        content: const Text(
+            'Are you sure you want to delete this budget? This action cannot be undone.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -304,7 +307,10 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
       final budgetData = {
         'status': 'deleted',
       };
-      await _firestore.collection('budgets').doc(_budget!.budgetId).update(budgetData);
+      await _firestore
+          .collection('budgets')
+          .doc(_budget!.budgetId)
+          .update(budgetData);
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -314,7 +320,7 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
         ),
       );
       Navigator.pop(context);
-    }  on FirebaseException catch (e) {
+    } on FirebaseException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -337,12 +343,66 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
     }
   }
 
+  Future<void> _recreateBudget(BudgetModel oldBudget) async {
+    try {
+      // 1. Create a new budget based on the old one
+      final newBudget = BudgetModel(
+        budgetId: FirebaseFirestore.instance.collection('budgets').doc().id,
+        budgetCategory: oldBudget.budgetCategory,
+        budgetName: '${oldBudget.budgetName} (New)',
+        targetAmount: oldBudget.targetAmount,
+        currentSpent: 0,
+        duration: oldBudget.duration,
+        status: Status.active,
+        isRecurring: oldBudget.isRecurring,
+        startDate: DateTime.now(),
+        endDate: _calculateEndDate(DateTime.now(), oldBudget.duration),
+        userId: _auth.currentUser!.uid,
+        remark: oldBudget.remark,
+      );
+
+      // 2. Add to Firestore
+      await FirebaseFirestore.instance
+          .collection('budgets')
+          .doc(newBudget.budgetId)
+          .set(newBudget.toMap());
+
+      // 3. Show success message
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Budget recreated successfully!')),
+      );
+
+      // 4. Optional: Navigate to the new budget
+      Navigator.pushReplacementNamed(context, '/budget_overview');
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to recreate budget: ${e.toString()}')),
+      );
+    }
+  }
+
+// Helper function to calculate end date
+  DateTime _calculateEndDate(DateTime startDate, DurationCategory duration) {
+    switch (duration) {
+      case DurationCategory.daily:
+        return startDate.add(const Duration(days: 1));
+      case DurationCategory.weekly:
+        return startDate.add(const Duration(days: 7));
+      case DurationCategory.monthly:
+        return DateTime(startDate.year, startDate.month + 1, startDate.day);
+      case DurationCategory.custom:
+        return startDate.add(const Duration(days: 30)); // Default custom period
+    }
+  }
+
   // ========== Helper Methods ==========
-  SpendingData _calculateSpendingData(List<TransactionModel> transactions, BudgetModel budget) {
+  SpendingData _calculateSpendingData(
+      List<TransactionModel> transactions, BudgetModel budget) {
     final spentPerCategory = <String, double>{};
     double totalSpent = 0.0;
     final firstDay = DateTime(budget.startDate.year, budget.startDate.month, 1);
-    final lastDay = DateTime(budget.startDate.year, budget.startDate.month + 1, 0, 23, 59, 59);
+    final lastDay = DateTime(
+        budget.startDate.year, budget.startDate.month + 1, 0, 23, 59, 59);
 
     if (transactions.isEmpty) {
       return SpendingData(
@@ -356,7 +416,7 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
       totalSpent += txn.amount.abs();
       spentPerCategory.update(
         txn.category,
-            (value) => value + txn.amount.abs(),
+        (value) => value + txn.amount.abs(),
         ifAbsent: () => txn.amount.abs(),
       );
     }
@@ -380,7 +440,7 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
     );
   }
 
-  AppBar _buildAppBar(){
+  AppBar _buildAppBar() {
     return AppBar(
       title: Row(
         children: [
@@ -395,25 +455,20 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
           onSelected: (String value) {
             _handleMenuSelection(value);
           },
-          itemBuilder: (BuildContext context) =>
-          [
-            PopupMenuItem<String>(
-              value: 'settings',
-              child: ListTile(
-                leading: Icon(Icons.settings, size: 20, color: Colors.grey,),
-                title: Text('Settings'),
-                dense: true,
+          itemBuilder: (BuildContext context) => [
+            if (_status == Status.active.name)
+              PopupMenuItem<String>(
+                value: 'editing',
+                child: ListTile(
+                  leading: Icon(
+                    Icons.edit,
+                    size: 20,
+                    color: Colors.blue,
+                  ),
+                  title: Text('Editing'),
+                  dense: true,
+                ),
               ),
-            ),
-            PopupMenuItem<String>(
-              value: 'editing',
-              child: ListTile(
-                leading: Icon(Icons.edit, size: 20, color: Colors.blue,),
-                title: Text('Editing'),
-                dense: true,
-              ),
-            ),
-
             if (_status == Status.active.name)
               PopupMenuItem<String>(
                 value: 'stopping',
@@ -423,30 +478,49 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
                   dense: true,
                 ),
               )
-            else
+            else if (_status == Status.stopped.name)
               PopupMenuItem<String>(
                 value: 'continue',
                 child: ListTile(
-                  leading: Icon(Icons.play_circle, size: 20, color: Colors.green),
+                  leading:
+                      Icon(Icons.play_circle, size: 20, color: Colors.green),
                   title: Text('Continue Budget'),
                   dense: true,
                 ),
               ),
-            PopupMenuItem<String>(
-              value: 'deleting',
-              child: ListTile(
-                leading: Icon(Icons.delete_rounded, size: 20, color: Colors.red,),
-                title: Text('Delete budget'),
-                dense: true,
+            if (_status == Status.active.name)
+              PopupMenuItem<String>(
+                value: 'deleting',
+                child: ListTile(
+                  leading: Icon(
+                    Icons.delete_rounded,
+                    size: 20,
+                    color: Colors.red,
+                  ),
+                  title: Text('Delete budget'),
+                  dense: true,
+                ),
               ),
-            ),
+            if (_status == Status.failed.name ||
+                _status == Status.completed.name ||
+                _status == Status.deleted.name)
+              PopupMenuItem<String>(
+                value: 'recreate',
+                child: ListTile(
+                  leading:
+                      Icon(Icons.refresh, size: 20, color: Colors.blue[700]),
+                  title:
+                      Text('Recreate Budget', style: TextStyle(fontSize: 14)),
+                  dense: true,
+                ),
+              ),
           ],
         ),
       ],
     );
   }
 
-  Widget _buildBody(){
+  Widget _buildBody() {
     if (_isLoading) {
       return _buildLoadingState();
     }
@@ -464,12 +538,12 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
         .collection('transactions')
         .where('userId', isEqualTo: _auth.currentUser?.uid ?? 'invalid')
         .where('isExpense', isEqualTo: true)
-        .where('category', isEqualTo: _budget!.budgetCategory)
+        .where('budgetId', isEqualTo: _budget!.budgetId)
         .snapshots();
 
     return StreamBuilder<QuerySnapshot>(
         stream: stream,
-        builder: (context, transactionSnapshot){
+        builder: (context, transactionSnapshot) {
           if (transactionSnapshot.connectionState == ConnectionState.waiting) {
             return _buildLoadingState();
           }
@@ -484,30 +558,32 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
 
           // For display calendar
           final transactionDates = transactionSnapshot.data?.docs
-              .map((doc) {
-            try {
-              return TransactionModel.fromFirestore(doc);
-            } catch (e) {
-              debugPrint('Error creating transaction: $e');
-              return null;
-            }
-          })
-              .where((txn) =>
-              txn != null &&
-              txn.category == _budget?.budgetCategory&&
-              txn.date.isAfter(_startDate.subtract(const Duration(seconds: 1))) &&
-              txn.date.isBefore(_endDate.add(const Duration(seconds: 1)))
-          )
-              .map((txn) => txn!.date)
-              .toList() ?? [];
+                  .map((doc) {
+                    try {
+                      return TransactionModel.fromFirestore(doc);
+                    } catch (e) {
+                      debugPrint('Error creating transaction: $e');
+                      return null;
+                    }
+                  })
+                  .where((txn) =>
+                      txn != null &&
+                      txn.budgetId == _budget?.budgetId &&
+                      txn.date.isAfter(
+                          _startDate.subtract(const Duration(seconds: 1))) &&
+                      txn.date
+                          .isBefore(_endDate.add(const Duration(seconds: 1))))
+                  .map((txn) => txn!.date)
+                  .toList() ??
+              [];
 
           // For expenses list
           final expenses = transactionSnapshot.data!.docs
               .map((doc) => TransactionModel.fromFirestore(doc))
               .where((txn) =>
-          txn.category == _budget?.budgetCategory &&
-              txn.date.isAfter(_startDate.subtract(Duration(seconds: 1))) &&
-              txn.date.isBefore(_endDate.add(Duration(seconds: 1))))
+                  txn.budgetId == _budget?.budgetId &&
+                  txn.date.isAfter(_startDate.subtract(Duration(seconds: 1))) &&
+                  txn.date.isBefore(_endDate.add(Duration(seconds: 1))))
               .toList();
 
           final spendingData = _calculateSpendingData(
@@ -515,7 +591,8 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
             _budget!,
           );
 
-          final spent = spendingData.spentPerBudgetCategory[category] ?? 0.0;
+          final spent =
+              spendingData.totalSpent; // Use totalSpent from spendingData
           final targetAmount = double.tryParse(amount) ?? 0.0;
           final amountProgress = targetAmount > 0 ? spent / targetAmount : 0.0;
           final categoryColor = CategoryUtils.getCategoryColor(category);
@@ -524,7 +601,8 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
           // Calculate progress values
           final totalDuration = _endDate.difference(_startDate);
           final elapsedDuration = DateTime.now().difference(_startDate);
-          final dateProgress = elapsedDuration.inSeconds / totalDuration.inSeconds;
+          final dateProgress =
+              elapsedDuration.inSeconds / totalDuration.inSeconds;
           final percentage = (dateProgress * 100).clamp(0, 100).toInt();
           final remainDays = _endDate.difference(DateTime.now()).inDays;
 
@@ -550,7 +628,8 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
                   const SizedBox(height: 16),
                   _buildBudgetDeadline(dateProgress),
                   const SizedBox(height: 8),
-                  _buildDeadlineText(_startDate, _endDate, percentage, dateProgress),
+                  _buildDeadlineText(
+                      _startDate, _endDate, percentage, dateProgress),
                   const SizedBox(height: 16),
                   _buildRemainDays(remainDays),
                 ],
@@ -559,14 +638,14 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
                 const SizedBox(height: 16),
                 _buildBudgetProgressTitle(),
                 if (_expandedSections['progress']!) ...[
+                  const SizedBox(height: 75),
+                  _buildExpenseChart(expenses),
                   const SizedBox(height: 16),
                   _buildProgressBar(amountProgress, categoryColor),
                   const SizedBox(height: 8),
                   _buildProgressText(spent, targetAmount),
                   const SizedBox(height: 16),
                   _buildRemainAmount(remainAmount),
-                  const SizedBox(height: 75),
-                  _buildExpenseChart(expenses),
                 ],
 
                 //Duration
@@ -579,7 +658,7 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
 
                 //Remark
                 const SizedBox(height: 16),
-                if(remark.isNotEmpty)...[
+                if (remark.isNotEmpty) ...[
                   _buildRemarkTitle(),
                   if (_expandedSections['remark']!) ...[
                     const SizedBox(height: 8),
@@ -589,9 +668,9 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
 
                 //Expenses
                 const SizedBox(height: 16),
-                if (expenses.isNotEmpty)...[
+                if (expenses.isNotEmpty) ...[
                   _buildExpensesTitle(),
-                  if (_expandedSections['expenses']!)...[
+                  if (_expandedSections['expenses']!) ...[
                     const SizedBox(height: 8),
                     _buildExpensesList(expenses),
                   ],
@@ -599,23 +678,22 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
               ],
             ),
           );
-        }
-    );
+        });
   }
 
   Widget _buildLoadingState() {
     return const Center(child: CircularProgressIndicator());
   }
 
-  Widget _buildBudgetName(){
+  Widget _buildBudgetName() {
     return Text(
       budgetName,
       style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
     );
   }
 
-  Widget _buildIsRecurring(){
-    if (_isRecurring){
+  Widget _buildIsRecurring() {
+    if (_isRecurring) {
       return Container(
         margin: const EdgeInsets.only(right: 12), // optional spacing
         padding: const EdgeInsets.all(8),
@@ -728,7 +806,7 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
     );
   }
 
-  Widget _buildBudgetProgressTitle(){
+  Widget _buildBudgetProgressTitle() {
     return InkWell(
       onTap: () {
         setState(() {
@@ -791,10 +869,11 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
     return Colors.red;
   }
 
-  Widget _buildRemainAmount(double remainAmount){
+  Widget _buildRemainAmount(double remainAmount) {
     return Row(
       children: [
-        Text('Remaining Amount: RM ${remainAmount.toStringAsFixed(2)}',
+        Text(
+          'Remaining Amount: RM ${remainAmount.toStringAsFixed(2)}',
           style: TextStyle(
             fontSize: 16,
             color: Colors.blue,
@@ -804,9 +883,9 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
     );
   }
 
-  Widget _buildBudgetDeadlineTitle(){
+  Widget _buildBudgetDeadlineTitle() {
     return InkWell(
-      onTap: (){
+      onTap: () {
         setState(() {
           _expandedSections['deadline'] = !_expandedSections['deadline']!;
         });
@@ -830,7 +909,7 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
     );
   }
 
-  Widget _buildCalendar(List<DateTime> transactionDates){
+  Widget _buildCalendar(List<DateTime> transactionDates) {
     return Column(
       children: [
         TableCalendar(
@@ -957,17 +1036,17 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
   }
 
   Widget _buildBudgetDeadline(double progress) {
-    return
-      LinearProgressIndicator(
-        value: progress,
-        backgroundColor: Colors.grey[200],
-        valueColor: AlwaysStoppedAnimation<Color>(_getProgressColor(progress)),
-        minHeight: 10,
-        borderRadius: BorderRadius.circular(4),
-      );
+    return LinearProgressIndicator(
+      value: progress,
+      backgroundColor: Colors.grey[200],
+      valueColor: AlwaysStoppedAnimation<Color>(_getProgressColor(progress)),
+      minHeight: 10,
+      borderRadius: BorderRadius.circular(4),
+    );
   }
 
-  Widget _buildDeadlineText(DateTime startDate, DateTime endDate, int percentage, double progress) {
+  Widget _buildDeadlineText(
+      DateTime startDate, DateTime endDate, int percentage, double progress) {
     // Format dates
     final startDateFormatted = DateFormat('dd/MM/yyyy').format(startDate);
     final endDateFormatted = DateFormat('dd/MM/yyyy').format(endDate);
@@ -1010,20 +1089,18 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
     if (days > 0) {
       remainingText = 'Remaining: $days day${days != 1 ? 's' : ''}';
       textStyle = TextStyle(fontSize: 16, color: Colors.blue);
-    }
-    else if (remainingDuration.inHours > 0) {
-      remainingText = 'Remaining: ${remainingDuration.inHours} hour${remainingDuration.inHours != 1 ? 's' : ''}';
+    } else if (remainingDuration.inHours > 0) {
+      remainingText =
+          'Remaining: ${remainingDuration.inHours} hour${remainingDuration.inHours != 1 ? 's' : ''}';
       textStyle = TextStyle(fontSize: 16, color: Colors.blue);
-    }
-    else if (remainingDuration.inMinutes > 0) {
-      remainingText = 'Remaining: ${remainingDuration.inMinutes} minute${remainingDuration.inMinutes != 1 ? 's' : ''}';
+    } else if (remainingDuration.inMinutes > 0) {
+      remainingText =
+          'Remaining: ${remainingDuration.inMinutes} minute${remainingDuration.inMinutes != 1 ? 's' : ''}';
       textStyle = TextStyle(fontSize: 16, color: Colors.orange);
-    }
-    else if (totalSeconds > 0) {
+    } else if (totalSeconds > 0) {
       remainingText = 'Remaining: $seconds second${seconds != 1 ? 's' : ''}';
       textStyle = TextStyle(fontSize: 16, color: Colors.orange);
-    }
-    else {
+    } else {
       remainingText = 'Budget has ended';
       textStyle = TextStyle(fontSize: 16, color: Colors.red);
     }
@@ -1035,7 +1112,7 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
     );
   }
 
-  Widget _buildDurationTitle(){
+  Widget _buildDurationTitle() {
     return InkWell(
       onTap: () {
         setState(() {
@@ -1061,10 +1138,11 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
     );
   }
 
-  Widget _buildDuration(String duration){
+  Widget _buildDuration(String duration) {
     return Row(
       children: [
-        Text(_assignedDuration(duration),
+        Text(
+          _assignedDuration(duration),
           style: TextStyle(
             fontSize: 16,
             color: Colors.blue,
@@ -1074,7 +1152,7 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
     );
   }
 
-  Widget _buildRemarkTitle(){
+  Widget _buildRemarkTitle() {
     return InkWell(
       onTap: () {
         setState(() {
@@ -1100,10 +1178,11 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
     );
   }
 
-  Widget _buildRemarkText(String remark){
+  Widget _buildRemarkText(String remark) {
     return Row(
       children: [
-        Text(remark,
+        Text(
+          remark,
           style: TextStyle(
             fontSize: 16,
             color: Colors.blue,
@@ -1113,7 +1192,7 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
     );
   }
 
-  Widget _buildExpensesTitle(){
+  Widget _buildExpensesTitle() {
     return InkWell(
       onTap: () {
         setState(() {
@@ -1139,7 +1218,7 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
     );
   }
 
-  Widget _buildExpensesList(List<TransactionModel> expenses){
+  Widget _buildExpensesList(List<TransactionModel> expenses) {
     // Sort expenses by date (newest first)
     expenses.sort((a, b) => b.date.compareTo(a.date));
 
@@ -1166,7 +1245,6 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-
               Row(
                 children: [
                   Icon(
@@ -1230,7 +1308,8 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
               bottomTitles: AxisTitles(
                 sideTitles: SideTitles(
                   showTitles: true,
-                  getTitlesWidget: (value, meta) => Text(''), // Empty but keeps space
+                  getTitlesWidget: (value, meta) =>
+                      Text(''), // Empty but keeps space
                 ),
                 axisNameWidget: const Text(
                   'Date',
@@ -1267,10 +1346,11 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
     // Group expenses by day
     final dailyExpenses = <DateTime, double>{};
     for (final expense in expenses) {
-      final date = DateTime(expense.date.year, expense.date.month, expense.date.day);
+      final date =
+          DateTime(expense.date.year, expense.date.month, expense.date.day);
       dailyExpenses.update(
         date,
-            (value) => value + expense.amount,
+        (value) => value + expense.amount,
         ifAbsent: () => expense.amount,
       );
     }
@@ -1311,7 +1391,8 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
                     return Padding(
                       padding: const EdgeInsets.only(top: 4.0),
                       child: Text(
-                        DateFormat('dd MMM').format(sortedDates[value.toInt()]), // Format: "05 Jun"
+                        DateFormat('dd MMM').format(
+                            sortedDates[value.toInt()]), // Format: "05 Jun"
                         style: const TextStyle(
                           fontSize: 10,
                           color: Colors.grey,
@@ -1343,7 +1424,8 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
                   );
                 },
                 reservedSize: 32, // Adjust space for y-axis labels
-                interval: _calculateInterval(dailyExpenses.values), // Dynamic interval
+                interval: _calculateInterval(
+                    dailyExpenses.values), // Dynamic interval
               ),
               axisNameWidget: const Text(
                 'Amount',
@@ -1366,7 +1448,7 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
     );
   }
 
-  Widget _buildActionButton(){
+  Widget _buildActionButton() {
     return Padding(
       padding: EdgeInsets.only(left: 30),
       child: Row(

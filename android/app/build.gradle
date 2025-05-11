@@ -45,3 +45,8 @@ android {
 flutter {
     source = "../.."
 }
+
+// Add this dependency to support Google Maps
+dependencies {
+    implementation 'com.google.android.gms:play-services-maps:18.2.0'
+}

@@ -1,5 +1,4 @@
 import 'dart:math';
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -55,8 +54,8 @@ class _BudgetEditScreenState extends State<BudgetEditScreen> {
   }
 
   void _initializeDefaults(){
-    final defaultCategory = CategoryUtils.categories.isNotEmpty
-        ? CategoryUtils.categories[0]
+    final defaultCategory = CategoryUtils.allCategories.isNotEmpty
+        ? CategoryUtils.allCategories[0]
         : "Food";
     _categoryController.text = defaultCategory;
     _selectedIcon = CategoryUtils.getCategoryIcon(defaultCategory);
@@ -189,9 +188,9 @@ class _BudgetEditScreenState extends State<BudgetEditScreen> {
         ),
         child: DropdownButtonHideUnderline(
           child: DropdownButton<String>(
-            value: CategoryUtils.categories.contains(_categoryController.text)
+            value: CategoryUtils.allCategories.contains(_categoryController.text)
                 ? _categoryController.text
-                : (CategoryUtils.categories.isNotEmpty ? CategoryUtils.categories[0] : null),
+                : (CategoryUtils.allCategories.isNotEmpty ? CategoryUtils.allCategories[0] : null),
             isExpanded: true,
             borderRadius: BorderRadius.circular(15.0),
             icon: Icon(Icons.arrow_drop_down),
@@ -200,7 +199,7 @@ class _BudgetEditScreenState extends State<BudgetEditScreen> {
             iconDisabledColor: Colors.grey,
             elevation: 8,
 
-            items: CategoryUtils.categories.map((String category) {
+            items: CategoryUtils.allCategories.map((String category) {
               return DropdownMenuItem<String>(
                 value: category,
                 child: Row(

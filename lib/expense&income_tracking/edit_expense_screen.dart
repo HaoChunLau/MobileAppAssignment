@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:mobile_app_assignment/category_utils.dart';
 import 'package:mobile_app_assignment/models/transaction_model.dart';
+import 'package:mobile_app_assignment/models/budget_model.dart';
 
 class EditExpenseScreen extends StatefulWidget {
   const EditExpenseScreen({super.key});
@@ -16,28 +17,18 @@ class EditExpenseScreenState extends State<EditExpenseScreen> {
   final _formKey = GlobalKey<FormState>();
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  
+
   // Form field controllers
   late TextEditingController _titleController;
   late TextEditingController _amountController;
   late TextEditingController _descriptionController;
-  
+
   late DateTime _selectedDate;
   late String _selectedCategory;
-  
-  // Predefined categories
-  final List<String> _categories = [
-    'Food',
-    'Transportation',
-    'Entertainment',
-    'Utilities',
-    'Housing',
-    'Healthcare',
-    'Shopping',
-    'Education',
-    'Personal',
-    'Other',
-  ];
+  String? _selectedBudgetId; // Nullable for "No Budget"
+  List<BudgetModel> _budgets = []; // List of available budgets
+
+  final List<String> _categories = CategoryUtils.expenseCategories;
 
   bool _isLoading = true;
   String _expenseId = '';
@@ -51,22 +42,39 @@ class EditExpenseScreenState extends State<EditExpenseScreen> {
     _descriptionController = TextEditingController();
     _selectedDate = DateTime.now();
     _selectedCategory = 'Food';
+    _fetchBudgets(); // Fetch budgets when screen loads
+  }
+
+  // Fetch active budgets from Firestore
+  void _fetchBudgets() async {
+    try {
+      final user = _auth.currentUser!;
+      final snapshot = await _firestore
+          .collection('budgets')
+          .where('userId', isEqualTo: user.uid)
+          .where('status', whereIn: ['active', 'failed']).get();
+
+      setState(() {
+        _budgets = snapshot.docs.map((doc) => BudgetModel.fromFirestore(doc)).toList();
+      });
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error fetching budgets: ${e.toString()}')),
+      );
+    }
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    
-    // Get the expense ID from the route arguments
+
     final arguments = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
     if (arguments != null && arguments.containsKey('id')) {
       _expenseId = arguments['id'] as String;
-      // Only load data if not already loaded
       if (!_dataLoaded) {
         _loadExpenseData();
       }
     } else {
-      // No ID provided, show error and go back
       WidgetsBinding.instance.addPostFrameCallback((_) {
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
@@ -76,21 +84,21 @@ class EditExpenseScreenState extends State<EditExpenseScreen> {
     }
   }
 
-  // Load expense data from Firestore
   void _loadExpenseData() async {
     try {
       final doc = await _firestore.collection('transactions').doc(_expenseId).get();
       if (doc.exists) {
         final transaction = TransactionModel.fromFirestore(doc);
-        
+
         setState(() {
           _titleController.text = transaction.title;
           _amountController.text = transaction.amount.toString();
           _selectedDate = transaction.date;
           _selectedCategory = transaction.category;
           _descriptionController.text = transaction.notes ?? '';
+          _selectedBudgetId = transaction.budgetId; // Load budgetId
           _isLoading = false;
-          _dataLoaded = true; // Mark data as loaded
+          _dataLoaded = true;
         });
       } else {
         if (!mounted) return;
@@ -154,7 +162,7 @@ class EditExpenseScreenState extends State<EditExpenseScreen> {
                       },
                     ),
                     SizedBox(height: 16),
-                    
+
                     // Amount field
                     TextFormField(
                       controller: _amountController,
@@ -176,7 +184,7 @@ class EditExpenseScreenState extends State<EditExpenseScreen> {
                       },
                     ),
                     SizedBox(height: 16),
-                    
+
                     // Date picker
                     InkWell(
                       onTap: _pickDate,
@@ -198,7 +206,7 @@ class EditExpenseScreenState extends State<EditExpenseScreen> {
                       ),
                     ),
                     SizedBox(height: 16),
-                    
+
                     // Category dropdown
                     InputDecorator(
                       decoration: InputDecoration(
@@ -237,7 +245,44 @@ class EditExpenseScreenState extends State<EditExpenseScreen> {
                       ),
                     ),
                     SizedBox(height: 16),
-                    
+
+                    // Budget dropdown
+                    InputDecorator(
+                      decoration: InputDecoration(
+                        labelText: 'Budget (Optional)',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.account_balance_wallet),
+                      ),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<String?>(
+                          value: _selectedBudgetId,
+                          isExpanded: true,
+                          items: [
+                            DropdownMenuItem<String?>(
+                              value: null,
+                              child: Text('No Budget'),
+                            ),
+                            ..._budgets.map((BudgetModel budget) {
+                              return DropdownMenuItem<String?>(
+                                value: budget.budgetId,
+                                child: Text(
+                                  '${budget.budgetName} (${budget.budgetCategory})',
+                                ),
+                              );
+                            }).toList(),
+                          ],
+                          onChanged: (String? newValue) {
+                            if (mounted) {
+                              setState(() {
+                                _selectedBudgetId = newValue;
+                              });
+                            }
+                          },
+                        ),
+                      ),
+                    ),
+                    SizedBox(height: 16),
+
                     // Description field
                     TextFormField(
                       controller: _descriptionController,
@@ -250,7 +295,7 @@ class EditExpenseScreenState extends State<EditExpenseScreen> {
                       maxLines: 3,
                     ),
                     SizedBox(height: 24),
-                    
+
                     // Submit button
                     SizedBox(
                       width: double.infinity,
@@ -279,9 +324,9 @@ class EditExpenseScreenState extends State<EditExpenseScreen> {
       firstDate: DateTime(2020),
       lastDate: DateTime.now(),
     );
-    
+
     if (pickedDate != null && pickedDate != _selectedDate) {
-      if (mounted) {  // Check if widget is still mounted
+      if (mounted) {
         setState(() {
           _selectedDate = pickedDate;
         });
@@ -296,7 +341,7 @@ class EditExpenseScreenState extends State<EditExpenseScreen> {
           _isLoading = true;
         });
 
-        final user = _auth.currentUser!;  // No null check needed
+        final user = _auth.currentUser!;
 
         TransactionModel transaction = TransactionModel(
           id: _expenseId,
@@ -309,9 +354,16 @@ class EditExpenseScreenState extends State<EditExpenseScreen> {
               : _descriptionController.text,
           userId: user.uid,
           isExpense: true,
+          budgetId: _selectedBudgetId,
         );
 
-        await _firestore.collection('transactions').doc(_expenseId).update(transaction.toMap());
+        await _firestore
+            .collection('transactions')
+            .doc(_expenseId)
+            .update(transaction.toMap());
+
+        // Update budget's currentSpent
+        await _updateBudgetCurrentSpent(_selectedBudgetId);
 
         if (!mounted) return;
 
@@ -335,6 +387,34 @@ class EditExpenseScreenState extends State<EditExpenseScreen> {
     }
   }
 
+  Future<void> _updateBudgetCurrentSpent(String? budgetId) async {
+    if (budgetId == null) return;
+
+    final budgetDoc = await _firestore.collection('budgets').doc(budgetId).get();
+    if (!budgetDoc.exists) return;
+
+    final budget = BudgetModel.fromFirestore(budgetDoc);
+
+    final transactions = await _firestore
+        .collection('transactions')
+        .where('userId', isEqualTo: _auth.currentUser?.uid)
+        .where('budgetId', isEqualTo: budgetId)
+        .where('isExpense', isEqualTo: true)
+        .where('date', isGreaterThanOrEqualTo: Timestamp.fromDate(budget.startDate))
+        .where('date', isLessThanOrEqualTo: Timestamp.fromDate(budget.endDate))
+        .get();
+
+    double currentSpent = transactions.docs.fold(0.0, (total, doc) {
+      final amount = (doc.data()['amount'] as num).toDouble();
+      return total + amount;
+    });
+
+    await _firestore.collection('budgets').doc(budgetId).update({
+      'currentSpent': currentSpent,
+      'lastUpdated': FieldValue.serverTimestamp(),
+    });
+  }
+
   void _showDeleteConfirmation() {
     showDialog(
       context: context,
@@ -355,15 +435,16 @@ class EditExpenseScreenState extends State<EditExpenseScreen> {
                     _isLoading = true;
                   });
 
-                  await _firestore.collection('transactions').doc(_expenseId).delete();
+                  await _firestore
+                      .collection('transactions')
+                      .doc(_expenseId)
+                      .delete();
 
                   if (!mounted) return;
 
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(content: Text('Expense deleted')),
                   );
-                  // Navigate back to the expense list screen
-                  // Navigator.popUntil(context, (route) => route.isFirst);
                   Navigator.pop(context);
                 } catch (e) {
                   if (!mounted) return;

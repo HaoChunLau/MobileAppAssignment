@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:mobile_app_assignment/models/transaction_model.dart';
+import 'package:mobile_app_assignment/category_utils.dart';
 
 class AddIncomeScreen extends StatefulWidget {
   const AddIncomeScreen({super.key});
@@ -17,24 +18,12 @@ class AddIncomeScreenState extends State<AddIncomeScreen> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   bool _isLoading = false;
 
-  // Form field controllers
   final _titleController = TextEditingController();
   final _amountController = TextEditingController();
   final _descriptionController = TextEditingController();
 
   DateTime _selectedDate = DateTime.now();
   String _selectedCategory = 'Salary';
-
-  // Predefined categories
-  final List<String> _categories = [
-    'Salary',
-    'Freelance',
-    'Investment',
-    'Gift',
-    'Bonus',
-    'Refund',
-    'Other',
-  ];
 
   @override
   void dispose() {
@@ -59,7 +48,6 @@ class AddIncomeScreenState extends State<AddIncomeScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Title field
                     TextFormField(
                       controller: _titleController,
                       decoration: const InputDecoration(
@@ -76,8 +64,6 @@ class AddIncomeScreenState extends State<AddIncomeScreen> {
                       },
                     ),
                     const SizedBox(height: 16),
-                    
-                    // Amount field
                     TextFormField(
                       controller: _amountController,
                       decoration: const InputDecoration(
@@ -98,8 +84,6 @@ class AddIncomeScreenState extends State<AddIncomeScreen> {
                       },
                     ),
                     const SizedBox(height: 16),
-                    
-                    // Date picker
                     InkWell(
                       onTap: _pickDate,
                       child: InputDecorator(
@@ -120,8 +104,6 @@ class AddIncomeScreenState extends State<AddIncomeScreen> {
                       ),
                     ),
                     const SizedBox(height: 16),
-                    
-                    // Category dropdown
                     InputDecorator(
                       decoration: const InputDecoration(
                         labelText: 'Category',
@@ -132,14 +114,14 @@ class AddIncomeScreenState extends State<AddIncomeScreen> {
                         child: DropdownButton<String>(
                           value: _selectedCategory,
                           isExpanded: true,
-                          items: _categories.map((String category) {
+                          items: CategoryUtils.incomeCategories.map((String category) {
                             return DropdownMenuItem<String>(
                               value: category,
                               child: Row(
                                 children: [
                                   Icon(
-                                    _getCategoryIcon(category),
-                                    color: _getCategoryColor(category),
+                                    CategoryUtils.getCategoryIcon(category),
+                                    color: CategoryUtils.getCategoryColor(category),
                                     size: 20,
                                   ),
                                   const SizedBox(width: 8),
@@ -159,8 +141,6 @@ class AddIncomeScreenState extends State<AddIncomeScreen> {
                       ),
                     ),
                     const SizedBox(height: 16),
-                    
-                    // Description field
                     TextFormField(
                       controller: _descriptionController,
                       decoration: const InputDecoration(
@@ -172,8 +152,6 @@ class AddIncomeScreenState extends State<AddIncomeScreen> {
                       maxLines: 3,
                     ),
                     const SizedBox(height: 24),
-                    
-                    // Submit button
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton(
@@ -201,7 +179,7 @@ class AddIncomeScreenState extends State<AddIncomeScreen> {
       firstDate: DateTime(2020),
       lastDate: DateTime.now(),
     );
-    
+
     if (pickedDate != null && pickedDate != _selectedDate) {
       setState(() {
         _selectedDate = pickedDate;
@@ -216,7 +194,6 @@ class AddIncomeScreenState extends State<AddIncomeScreen> {
           _isLoading = true;
         });
 
-        // Directly use the already-authenticated user
         final user = _auth.currentUser!;
 
         TransactionModel transaction = TransactionModel(
@@ -228,7 +205,7 @@ class AddIncomeScreenState extends State<AddIncomeScreen> {
               ? null
               : _descriptionController.text,
           userId: user.uid,
-          isExpense: false, // Important: Set to false for income
+          isExpense: false,
         );
 
         await _firestore.collection('transactions').add(transaction.toMap());
@@ -248,44 +225,6 @@ class AddIncomeScreenState extends State<AddIncomeScreen> {
       } finally {
         if (mounted) setState(() => _isLoading = false);
       }
-    }
-  }
-
-  Color _getCategoryColor(String category) {
-    switch (category) {
-      case 'Salary':
-        return Colors.green;
-      case 'Freelance':
-        return Colors.blue;
-      case 'Investment':
-        return Colors.purple;
-      case 'Gift':
-        return Colors.pink;
-      case 'Bonus':
-        return Colors.amber;
-      case 'Refund':
-        return Colors.teal;
-      default:
-        return Colors.grey;
-    }
-  }
-
-  IconData _getCategoryIcon(String category) {
-    switch (category) {
-      case 'Salary':
-        return Icons.account_balance;
-      case 'Freelance':
-        return Icons.work;
-      case 'Investment':
-        return Icons.trending_up;
-      case 'Gift':
-        return Icons.card_giftcard;
-      case 'Bonus':
-        return Icons.star;
-      case 'Refund':
-        return Icons.replay;
-      default:
-        return Icons.attach_money;
     }
   }
 }

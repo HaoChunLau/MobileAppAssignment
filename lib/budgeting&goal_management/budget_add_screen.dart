@@ -37,19 +37,16 @@ class _BudgetAddScreenState extends State<BudgetAddScreen> {
   DurationCategory _selectedDuration = DurationCategory.weekly;
   bool _isRecurring = false;
 
-  //=====================
-  // INITIALIZATION
-  //=====================
   @override
-  void initState() {  //set default value
+  void initState() {
     super.initState();
     _initializeDefaultValues();
     _updateDueDateDisplay();
   }
 
   void _initializeDefaultValues() {
-    final defaultCategory = CategoryUtils.categories.isNotEmpty
-        ? CategoryUtils.categories[0]
+    final defaultCategory = CategoryUtils.allCategories.isNotEmpty
+        ? CategoryUtils.allCategories[0]
         : "Food";
 
     _categoryController.text = defaultCategory;
@@ -74,9 +71,6 @@ class _BudgetAddScreenState extends State<BudgetAddScreen> {
     super.dispose();
   }
 
-  //=====================
-  // BUSINESS LOGIC
-  //=====================
   Future<void> _selectDate() async {
     final DateTime? picked = await showDatePicker(
       context: context, // Uses the State's context
@@ -205,41 +199,6 @@ class _BudgetAddScreenState extends State<BudgetAddScreen> {
     return false;
   }
 
-  // =========== GENERATE BUDGET ID ===============
-  Future<String> generateCategoryBudgetId(String category) async {
-    final prefix = CategoryUtils.getCategoryPrefix(category);
-
-    // Reference to the counter document for this category
-    final counterRef = FirebaseFirestore.instance
-        .collection('budget_counters')
-        .doc(category.toLowerCase());
-
-    try {
-      // Atomically increment the counter (or create if doesn't exist)
-      // Start transaction
-      final newCount = await FirebaseFirestore.instance
-          .runTransaction<int>((transaction) async {
-        final snapshot = await transaction.get(counterRef);
-
-        int currentCount = 0;
-        if (snapshot.exists) {
-          currentCount = (snapshot.data()?['count'] ?? 0) as int;
-        }
-
-        final updatedCount = currentCount + 1;
-        transaction.set(counterRef, {'count': updatedCount});
-        return updatedCount;
-      });
-
-      // Format: Prefix + 4-digit number (e.g., BFID0001)
-      return '$prefix${newCount.toString().padLeft(4, '0')}';
-    } catch (e) {
-      // Fallback if counter fails
-      final randomId = Random().nextInt(9999).toString().padLeft(4, '0');
-      return '$prefix$randomId';
-    }
-  }
-
   Future<void> _saveBudget() async {
     if (_formKey.currentState!.validate()) {
       try {
@@ -258,11 +217,8 @@ class _BudgetAddScreenState extends State<BudgetAddScreen> {
         final userId = _auth.currentUser?.uid;
         if (userId == null) return;
 
-        final budgetId = await generateCategoryBudgetId(_categoryController.text);
-
-        //PASSING DATA TO FIREBASE
         final budgetData = {
-          'budgetId': budgetId,
+          'budgetId':  _firestore.collection('budgets').doc().id,
           'budgetCategory': _categoryController.text,
           'budgetName': _budgetNameController.text,
           'targetAmount': double.parse(_amountController.text),
@@ -301,9 +257,6 @@ class _BudgetAddScreenState extends State<BudgetAddScreen> {
     }
   }
 
-  //=====================
-  // FORM VALIDATORS
-  //=====================
   String? _budgetTitleValidator(String? value) {
     if (value == null || value.isEmpty) return 'Please enter a budget title';
     if (value.length > 20) return 'We only accept 20 characters. Please try again';
@@ -355,35 +308,15 @@ class _BudgetAddScreenState extends State<BudgetAddScreen> {
     return null;
   }
 
-  //=====================
-  // NAVIGATOR
-  //=====================
-  void _navigateToEditBudget() {
-    //Add-on features
-    //Navigator.pushNamed( context, '/budget_challenges');
-  }
-
-  //=====================
-  // UI COMPONENTS
-  //=====================
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: _buildAppBar(),
+      appBar: AppBar(
+        title: const Text('Add Budget'),
+      ),
       body: _buildBody(),
       floatingActionButton: _buildSubmitButton(),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
-    );
-  }
-
-  AppBar _buildAppBar(){
-    return AppBar(
-      title: Text('Create Budget'),
-      actions: [
-        IconButton(
-            onPressed: () => _navigateToEditBudget(),
-            icon: Icon(Icons.local_fire_department_outlined))
-      ],
     );
   }
 
@@ -433,9 +366,9 @@ class _BudgetAddScreenState extends State<BudgetAddScreen> {
         ),
         child: DropdownButtonHideUnderline(
           child: DropdownButton<String>(
-            value: CategoryUtils.categories.contains(_categoryController.text)
+            value: CategoryUtils.allCategories.contains(_categoryController.text)
                 ? _categoryController.text
-                : (CategoryUtils.categories.isNotEmpty ? CategoryUtils.categories[0] : null),
+                : (CategoryUtils.allCategories.isNotEmpty ? CategoryUtils.allCategories[0] : null),
             isExpanded: true,
             borderRadius: BorderRadius.circular(15.0),
             icon: Icon(Icons.arrow_drop_down),
@@ -443,7 +376,7 @@ class _BudgetAddScreenState extends State<BudgetAddScreen> {
             iconEnabledColor: Colors.blueAccent,
             iconDisabledColor: Colors.grey,
             elevation: 8,
-            items: CategoryUtils.categories.map((String category) {
+            items: CategoryUtils.allCategories.map((String category) {
               return DropdownMenuItem<String>(
                 value: category,
                 child: Row(

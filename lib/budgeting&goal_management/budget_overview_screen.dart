@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -25,21 +26,18 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
   DateTime _selectedDate = DateTime.now();
-  int _currentIndex = _budgetTabIndex; // Make sure index matches Budget tab
+  int _currentIndex = _budgetTabIndex;
 
   BudgetModel? budgetPassing;
 
-  // Tab bar control
   late TabController _tabController;
-  int _activeTabIndex = 0; // Default to first tab (All)
+  int _activeTabIndex = 0;
 
-  // Search properties
   final TextEditingController _searchController = TextEditingController();
   String _searchTerm = '';
   bool _isSearchVisible = false;
   SortingOptions _sortingOptions = const SortingOptions();
 
-  // ========== Filter Properties ==========
   List<String> _selectedCategories = [];
   double _minAmount = 0;
   double _maxAmount = double.infinity;
@@ -55,22 +53,23 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
   String? _startDateError;
   String? _endDateError;
 
-  // ======= For tab bar ========
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 6, vsync: this); // 6 tabs
+    _tabController = TabController(length: 6, vsync: this);
     _tabController.addListener(() {
       setState(() {
         _activeTabIndex = _tabController.index;
       });
     });
 
-    //_loadBudgetData();
+    _updateAllBudgetsCurrentSpent().then((_) {
+      if (mounted) setState(() {});
+    });
 
-    // Check status every hour
     Timer.periodic(Duration(hours: 1), (timer) {
       _checkAndUpdateAllBudgets();
+      _handleRecurringBudgets();
     });
   }
 
@@ -85,7 +84,6 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
     super.dispose();
   }
 
-  // =========== Update Status ================
   void _checkAndUpdateAllBudgets() async {
     final budgets = await _firestore
         .collection('budgets')
@@ -99,23 +97,22 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
       final budget = BudgetModel.fromFirestore(doc);
       final previousStatus = budget.status;
 
+      await updateCurrentSpent(budget);
       budget.updateStatus(currentDate: _selectedDate);
-      updateCurrentSpent(budget);
 
       if (budget.status != previousStatus) {
-        batch.update(doc.reference, {'status': budget.status.name});
+        batch.update(doc.reference, {
+          'status': budget.status.name,
+          'currentSpent': budget.currentSpent
+        });
       }
     }
 
     await batch.commit();
   }
 
-  // ========= Popup Windows for more action ========
   void _handleMenuSelection(String value) {
     switch (value) {
-      case 'settings':
-        Navigator.pushNamed(context, '/settings');
-        break;
       case 'search':
         setState(() {
           _isSearchVisible = !_isSearchVisible;
@@ -137,7 +134,6 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
     }
   }
 
-  //========== Sorting Method ============
   void _showSortDialog(BuildContext context) {
     showDialog(
       context: context,
@@ -154,13 +150,13 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
     });
   }
 
-  // ========== Filter Method ==========
   void _showFilterDialog(BuildContext context) {
-    final allCategories = CategoryUtils.categories;
+    final allCategories = CategoryUtils.allCategories;
 
-    // Clear controllers and set initial values
-    _minAmountController.text = _minAmount > 0 ? _minAmount.toStringAsFixed(2) : '';
-    _maxAmountController.text = _maxAmount < double.infinity ? _maxAmount.toStringAsFixed(2) : '';
+    _minAmountController.text =
+        _minAmount > 0 ? _minAmount.toStringAsFixed(2) : '';
+    _maxAmountController.text =
+        _maxAmount < double.infinity ? _maxAmount.toStringAsFixed(2) : '';
     _startDateController.text = _filterStartDate != null
         ? DateFormat('dd/MM/yyyy').format(_filterStartDate!)
         : '';
@@ -182,15 +178,11 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // Category Filter
-                    _buildCategoriesFilter(dialogSelectedCategories, allCategories, dialogSetState),
+                    _buildCategoriesFilter(dialogSelectedCategories,
+                        allCategories, dialogSetState),
                     const SizedBox(height: 16),
-
-                    // Amount Range Filter
                     _buildAmountRangeFilter(dialogSetState),
                     const SizedBox(height: 16),
-
-                    // Date Range Filter
                     _buildDateRangeFilter(dialogSetState),
                   ],
                 ),
@@ -220,7 +212,8 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
                 ),
                 TextButton(
                   onPressed: () {
-                    _validateAmounts(_minAmountController.text, _maxAmountController.text, dialogSetState);
+                    _validateAmounts(_minAmountController.text,
+                        _maxAmountController.text, dialogSetState);
                     _validateDateRange();
 
                     if (_minAmountError == null &&
@@ -235,8 +228,10 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
                         _maxAmount = _maxAmountController.text.isEmpty
                             ? double.infinity
                             : double.parse(_maxAmountController.text);
-                        _filterStartDate = DateTime.tryParse(_startDateController.text);
-                        _filterEndDate = DateTime.tryParse(_endDateController.text);
+                        _filterStartDate =
+                            DateTime.tryParse(_startDateController.text);
+                        _filterEndDate =
+                            DateTime.tryParse(_endDateController.text);
                         _isFilterActive = dialogSelectedCategories.isNotEmpty ||
                             _minAmount > 0 ||
                             _maxAmount < double.infinity ||
@@ -256,22 +251,19 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
     );
   }
 
-  void _validateAmounts(String minValue, String maxValue, StateSetter amtSetState) {
+  void _validateAmounts(
+      String minValue, String maxValue, StateSetter amtSetState) {
     final min = double.tryParse(minValue);
     final max = double.tryParse(maxValue);
 
-    // Reset errors
     _minAmountError = null;
     _maxAmountError = null;
 
     if (minValue.isEmpty && maxValue.isEmpty) {
-      _minAmountError = null;
-      _maxAmountError = null;
       amtSetState(() {});
       return;
     }
 
-    // Validate min amount
     if (minValue.isNotEmpty) {
       if (min == null) {
         _minAmountError = 'Enter a valid number';
@@ -280,7 +272,6 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
       }
     }
 
-    // Validate max amount
     if (maxValue.isNotEmpty) {
       if (max == null) {
         _maxAmountError = 'Enter a valid number';
@@ -289,7 +280,6 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
       }
     }
 
-    // Validate min < max
     if (min != null && max != null && max < min) {
       _maxAmountError = 'Max must be above Min';
     }
@@ -298,13 +288,8 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please fix the errors before applying')),
       );
-      return;
+      amtSetState(() {});
     }
-
-    // Update the state to show errors
-    amtSetState(() {
-
-    });
   }
 
   void _validateDateRange() {
@@ -323,19 +308,18 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
     if (!_isFilterActive) return budgets;
 
     return budgets.where((budget) {
-      // Category filter
       if (_selectedCategories.isNotEmpty &&
           !_selectedCategories.contains(budget.budgetCategory)) {
         return false;
       }
 
-      // Amount range filter
-      if (budget.targetAmount < _minAmount || budget.targetAmount > _maxAmount) {
+      if (budget.targetAmount < _minAmount ||
+          budget.targetAmount > _maxAmount) {
         return false;
       }
 
-      // Date range filter
-      if (_filterStartDate != null && budget.endDate.isBefore(_filterStartDate!)) {
+      if (_filterStartDate != null &&
+          budget.endDate.isBefore(_filterStartDate!)) {
         return false;
       }
       if (_filterEndDate != null && budget.startDate.isAfter(_filterEndDate!)) {
@@ -346,11 +330,10 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
     }).toList();
   }
 
-  // ========== Main Build Method ==========
   @override
   Widget build(BuildContext context) {
     return PopScope(
-      canPop: false, // Prevent default pop
+      canPop: false,
       onPopInvokedWithResult: (didPop, result) {
         if (!didPop) {
           Navigator.pushReplacementNamed(context, '/home');
@@ -366,17 +349,18 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
     );
   }
 
-  // Define a method to get the budget stream based on the selected date
-  Stream<QuerySnapshot> getBudgetStream(DateTime selectedDate, {List<String>? statuses}) {
-    // Start building the query
-    var query = _firestore.collection('budgets')
-        .where('userId', isEqualTo: _auth.currentUser ?.uid)
-        .where('startDate', isLessThanOrEqualTo: Timestamp.fromDate(
-        DateTime(selectedDate.year, selectedDate.month + 1, 0)))
-        .where('endDate', isGreaterThanOrEqualTo: Timestamp.fromDate(
-        DateTime(selectedDate.year, selectedDate.month, 1)));
+  Stream<QuerySnapshot> getBudgetStream(DateTime selectedDate,
+      {List<String>? statuses}) {
+    var query = _firestore
+        .collection('budgets')
+        .where('userId', isEqualTo: _auth.currentUser?.uid)
+        .where('startDate',
+            isLessThanOrEqualTo: Timestamp.fromDate(
+                DateTime(selectedDate.year, selectedDate.month + 1, 0)))
+        .where('endDate',
+            isGreaterThanOrEqualTo: Timestamp.fromDate(
+                DateTime(selectedDate.year, selectedDate.month, 1)));
 
-    // If statuses are provided, add the whereIn clause
     if (statuses != null && statuses.isNotEmpty) {
       query = query.where('status', whereIn: statuses);
     }
@@ -384,7 +368,30 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
     return query.snapshots();
   }
 
-  // ========== App Bar ==========
+  Stream<QuerySnapshot> getTransactionStream(
+      {String? budgetId, DateTime? startDate, DateTime? endDate}) {
+    var query = _firestore
+        .collection('transactions')
+        .where('userId', isEqualTo: _auth.currentUser?.uid)
+        .where('isExpense', isEqualTo: true);
+
+    if (budgetId != null) {
+      query = query.where('budgetId', isEqualTo: budgetId);
+    }
+
+    if (startDate != null) {
+      query = query.where('date',
+          isGreaterThanOrEqualTo: Timestamp.fromDate(startDate));
+    }
+
+    if (endDate != null) {
+      query =
+          query.where('date', isLessThanOrEqualTo: Timestamp.fromDate(endDate));
+    }
+
+    return query.snapshots();
+  }
+
   AppBar _buildAppBar() {
     return AppBar(
       title: Text('Budget - ${DateFormat('MMM yyyy').format(_selectedDate)}'),
@@ -399,16 +406,7 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
           onSelected: (String value) {
             _handleMenuSelection(value);
           },
-          itemBuilder: (BuildContext context) =>
-          [
-            PopupMenuItem<String>(
-              value: 'settings',
-              child: ListTile(
-                leading: Icon(Icons.settings, size: 20),
-                title: Text('Settings'),
-                dense: true,
-              ),
-            ),
+          itemBuilder: (BuildContext context) => [
             PopupMenuItem<String>(
                 value: 'search',
                 child: ListTile(
@@ -418,32 +416,28 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
                   ),
                   title: Text(_isSearchVisible ? 'Cancel Searching' : 'Search'),
                   dense: true,
-                )
-            ),
+                )),
             PopupMenuItem<String>(
                 value: 'sort',
                 child: ListTile(
                   leading: Icon(Icons.sort, size: 20),
                   title: Text('Sort by'),
                   dense: true,
-                )
-            ),
+                )),
             PopupMenuItem<String>(
                 value: 'filter',
                 child: ListTile(
                   leading: Icon(Icons.filter_alt_rounded, size: 20),
                   title: Text('Filter'),
                   dense: true,
-                )
-            ),
+                )),
             PopupMenuItem<String>(
                 value: 'history',
                 child: ListTile(
                   leading: Icon(Icons.history, size: 20),
                   title: Text('View History'),
                   dense: true,
-                )
-            ),
+                )),
           ],
         ),
       ],
@@ -452,11 +446,8 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
         controller: _tabController,
         isScrollable: true,
         indicatorColor: Colors.blue,
-        // Underline color for active tab
         labelColor: Colors.blue,
-        // Text color for active tab
         unselectedLabelColor: Colors.grey,
-        // Text color for inactive tabs
         tabs: const [
           Tab(text: 'All'),
           Tab(text: 'Active'),
@@ -467,14 +458,13 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
         ],
         onTap: (index) {
           setState(() {
-            _activeTabIndex = index; // Update the active tab index
+            _activeTabIndex = index;
           });
         },
       ),
     );
   }
 
-  // ========== Body Content ==========
   Widget _buildBody() {
     return Column(
       children: [
@@ -496,24 +486,32 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
     );
   }
 
-  //========= Tab control ========
   Widget _buildAllBudgetsTab() {
-    List<String> selectedStatuses = ['active', 'completed', 'failed', 'stopped', 'deleted'];
-
+    List<String> _selectedStatuses = [
+      'active',
+      'completed',
+      'failed',
+      'stopped',
+      'deleted'
+    ];
     return StreamBuilder<QuerySnapshot>(
-      stream: getBudgetStream(_selectedDate, statuses: selectedStatuses),
+      stream: getBudgetStream(_selectedDate, statuses: _selectedStatuses),
       builder: (context, snapshot) {
         List<BudgetModel> budgets = (snapshot.data?.docs ?? [])
             .map((doc) {
-          var budget = BudgetModel.fromFirestore(doc);
-          budget.updateStatus(currentDate: _selectedDate);
-          return budget;
-        })
-            .where((budget) => _searchTerm.isEmpty ||
-            budget.budgetName.toLowerCase().contains(
-                _searchTerm.toLowerCase()) ||
-            (budget.remark?.toLowerCase().contains(_searchTerm.toLowerCase()) ??
-                false))
+              var budget = BudgetModel.fromFirestore(doc);
+              budget.updateStatus(currentDate: _selectedDate);
+              return budget;
+            })
+            .where((budget) =>
+                _searchTerm.isEmpty ||
+                budget.budgetName
+                    .toLowerCase()
+                    .contains(_searchTerm.toLowerCase()) ||
+                (budget.remark
+                        ?.toLowerCase()
+                        .contains(_searchTerm.toLowerCase()) ??
+                    false))
             .toList();
 
         budgets = _applyFilters(budgets);
@@ -524,19 +522,21 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
   }
 
   Widget _buildActiveBudgetsTab() {
-    List<String> selectedStatuses = ['active'];
+    List<String> _selectedStatuses = ['active'];
     return StreamBuilder<QuerySnapshot>(
-      stream: getBudgetStream(_selectedDate, statuses: selectedStatuses),
+      stream: getBudgetStream(_selectedDate, statuses: _selectedStatuses),
       builder: (context, snapshot) {
-        // Filtered content for active budgets
         List<BudgetModel> activeBudgets = (snapshot.data?.docs ?? [])
             .map((doc) => BudgetModel.fromFirestore(doc))
             .where((budget) =>
-        _searchTerm.isEmpty ||
-            budget.budgetName.toLowerCase().contains(
-                _searchTerm.toLowerCase()) ||
-            (budget.remark?.toLowerCase().contains(_searchTerm.toLowerCase()) ??
-                false))
+                _searchTerm.isEmpty ||
+                budget.budgetName
+                    .toLowerCase()
+                    .contains(_searchTerm.toLowerCase()) ||
+                (budget.remark
+                        ?.toLowerCase()
+                        .contains(_searchTerm.toLowerCase()) ??
+                    false))
             .toList();
 
         activeBudgets = _applyFilters(activeBudgets);
@@ -547,19 +547,21 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
   }
 
   Widget _buildCompletedBudgetsTab() {
-    List<String> selectedStatuses = ['completed'];
+    List<String> _selectedStatuses = ['completed'];
     return StreamBuilder<QuerySnapshot>(
-      stream: getBudgetStream(_selectedDate, statuses: selectedStatuses),
+      stream: getBudgetStream(_selectedDate, statuses: _selectedStatuses),
       builder: (context, snapshot) {
-        // Filtered content for completed budgets
         List<BudgetModel> completedBudgets = (snapshot.data?.docs ?? [])
             .map((doc) => BudgetModel.fromFirestore(doc))
             .where((budget) =>
-        _searchTerm.isEmpty ||
-            budget.budgetName.toLowerCase().contains(
-                _searchTerm.toLowerCase()) ||
-            (budget.remark?.toLowerCase().contains(_searchTerm.toLowerCase()) ??
-                false))
+                _searchTerm.isEmpty ||
+                budget.budgetName
+                    .toLowerCase()
+                    .contains(_searchTerm.toLowerCase()) ||
+                (budget.remark
+                        ?.toLowerCase()
+                        .contains(_searchTerm.toLowerCase()) ??
+                    false))
             .toList();
 
         completedBudgets = _applyFilters(completedBudgets);
@@ -570,19 +572,21 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
   }
 
   Widget _buildFailedBudgetsTab() {
-    List<String> selectedStatuses = ['failed'];
+    List<String> _selectedStatuses = ['failed'];
     return StreamBuilder<QuerySnapshot>(
-      stream: getBudgetStream(_selectedDate, statuses: selectedStatuses),
+      stream: getBudgetStream(_selectedDate, statuses: _selectedStatuses),
       builder: (context, snapshot) {
-        // Filtered content for failed budgets
         List<BudgetModel> failedBudgets = (snapshot.data?.docs ?? [])
             .map((doc) => BudgetModel.fromFirestore(doc))
             .where((budget) =>
-        _searchTerm.isEmpty ||
-            budget.budgetName.toLowerCase().contains(
-                _searchTerm.toLowerCase()) ||
-            (budget.remark?.toLowerCase().contains(_searchTerm.toLowerCase()) ??
-                false))
+                _searchTerm.isEmpty ||
+                budget.budgetName
+                    .toLowerCase()
+                    .contains(_searchTerm.toLowerCase()) ||
+                (budget.remark
+                        ?.toLowerCase()
+                        .contains(_searchTerm.toLowerCase()) ??
+                    false))
             .toList();
 
         failedBudgets = _applyFilters(failedBudgets);
@@ -593,20 +597,21 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
   }
 
   Widget _buildStoppedBudgetsTab() {
-    List<String> selectedStatuses = ['stopped'];
-
+    List<String> _selectedStatuses = ['stopped'];
     return StreamBuilder<QuerySnapshot>(
-      stream: getBudgetStream(_selectedDate, statuses: selectedStatuses),
+      stream: getBudgetStream(_selectedDate, statuses: _selectedStatuses),
       builder: (context, snapshot) {
-        // Filtered content for stopped budgets
         List<BudgetModel> stoppedBudgets = (snapshot.data?.docs ?? [])
             .map((doc) => BudgetModel.fromFirestore(doc))
             .where((budget) =>
-        _searchTerm.isEmpty ||
-            budget.budgetName.toLowerCase().contains(
-                _searchTerm.toLowerCase()) ||
-            (budget.remark?.toLowerCase().contains(_searchTerm.toLowerCase()) ??
-                false))
+                _searchTerm.isEmpty ||
+                budget.budgetName
+                    .toLowerCase()
+                    .contains(_searchTerm.toLowerCase()) ||
+                (budget.remark
+                        ?.toLowerCase()
+                        .contains(_searchTerm.toLowerCase()) ??
+                    false))
             .toList();
 
         stoppedBudgets = _applyFilters(stoppedBudgets);
@@ -617,19 +622,21 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
   }
 
   Widget _buildDeletedBudgetsTab() {
-    List<String> selectedStatuses = ['deleted'];
+    List<String> _selectedStatuses = ['deleted'];
     return StreamBuilder<QuerySnapshot>(
-      stream: getBudgetStream(_selectedDate, statuses: selectedStatuses),
+      stream: getBudgetStream(_selectedDate, statuses: _selectedStatuses),
       builder: (context, snapshot) {
-        // Filtered content for active budgets
         List<BudgetModel> deletedBudgets = (snapshot.data?.docs ?? [])
             .map((doc) => BudgetModel.fromFirestore(doc))
             .where((budget) =>
-        _searchTerm.isEmpty ||
-            budget.budgetName.toLowerCase().contains(
-                _searchTerm.toLowerCase()) ||
-            (budget.remark?.toLowerCase().contains(_searchTerm.toLowerCase()) ??
-                false))
+                _searchTerm.isEmpty ||
+                budget.budgetName
+                    .toLowerCase()
+                    .contains(_searchTerm.toLowerCase()) ||
+                (budget.remark
+                        ?.toLowerCase()
+                        .contains(_searchTerm.toLowerCase()) ??
+                    false))
             .toList();
 
         deletedBudgets = _applyFilters(deletedBudgets);
@@ -639,7 +646,6 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
     );
   }
 
-  //======== Sort Content ========
   Widget _buildSortDialogContent(BuildContext context) {
     SortCategory currentCategory = _sortingOptions.category;
     SortDirection currentDirection = _sortingOptions.direction;
@@ -709,7 +715,6 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
     );
   }
 
-  // ==========Search Content ==========
   Widget _buildSearchContent(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.all(8.0),
@@ -721,7 +726,6 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
           prefixIcon: Icon(Icons.search),
           suffixIcon: Padding(
             padding: const EdgeInsets.only(right: 8.0),
-            // Adjust this value to move icons left/right
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -753,30 +757,25 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
             borderRadius: BorderRadius.circular(8.0),
           ),
           filled: true,
-          fillColor: Theme
-              .of(context)
-              .scaffoldBackgroundColor,
+          fillColor: Theme.of(context).scaffoldBackgroundColor,
         ),
         onChanged: (value) {
           setState(() {
-            _searchTerm = value; // Update search term on input change
+            _searchTerm = value;
           });
         },
       ),
     );
   }
 
-  // ============= Filtering Content ================
-
-  // Extension on each Title in filtering
   final Map<String, bool> _expandedSections = {
     'categories': true,
     'amount_range': false,
     'date_range': false,
   };
 
-  // ============ Categories Filter ==============
-  Widget _buildCategoriesFilter(List<String> selected, List<String> all, StateSetter setState){
+  Widget _buildCategoriesFilter(
+      List<String> selected, List<String> all, StateSetter setState) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -789,34 +788,32 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
     );
   }
 
-  Widget _buildCategoriesDialogTitle(StateSetter catSetState){
+  Widget _buildCategoriesDialogTitle(StateSetter catSetState) {
     return InkWell(
-      onTap: (){
+      onTap: () {
         catSetState(() {
           _expandedSections['categories'] = !_expandedSections['categories']!;
         });
       },
-      child: Row(
-          children: [
-            Text(
-              'Categories',
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 25,
-              ),
-            ),
-            Icon(
-              _expandedSections['categories']!
-                  ? Icons.expand_less
-                  : Icons.expand_more,
-            ),
-          ]
-      ),
+      child: Row(children: [
+        Text(
+          'Categories',
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            fontSize: 25,
+          ),
+        ),
+        Icon(
+          _expandedSections['categories']!
+              ? Icons.expand_less
+              : Icons.expand_more,
+        ),
+      ]),
     );
   }
 
-  Widget _buildCategoriesFilterContent(List<String> allCategories, List<String> selectedCategories, StateSetter catSetState){
-
+  Widget _buildCategoriesFilterContent(List<String> allCategories,
+      List<String> selectedCategories, StateSetter catSetState) {
     return Wrap(
       spacing: 8,
       runSpacing: 8,
@@ -834,7 +831,8 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
               }
             });
           },
-          selectedColor: CategoryUtils.getCategoryColor(category).withOpacity(0.2),
+          selectedColor:
+              CategoryUtils.getCategoryColor(category).withOpacity(0.2),
           checkmarkColor: CategoryUtils.getCategoryColor(category),
           backgroundColor: Colors.grey[200],
           labelStyle: TextStyle(
@@ -847,13 +845,12 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
     );
   }
 
-  // =============== Amount range ==================
-  Widget _buildAmountRangeFilter(StateSetter setState){
+  Widget _buildAmountRangeFilter(StateSetter setState) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _buildAmountRangeTitle(setState),
-        if (_expandedSections['amount_range']!)...[
+        if (_expandedSections['amount_range']!) ...[
           const SizedBox(height: 8),
           _buildAmountRangeFilterContent(setState),
         ]
@@ -861,33 +858,32 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
     );
   }
 
-  Widget _buildAmountRangeTitle(StateSetter amtSetState){
+  Widget _buildAmountRangeTitle(StateSetter amtSetState) {
     return InkWell(
-      onTap: (){
+      onTap: () {
         amtSetState(() {
-          _expandedSections['amount_range'] = !_expandedSections['amount_range']!;
+          _expandedSections['amount_range'] =
+              !_expandedSections['amount_range']!;
         });
       },
-      child: Row(
-          children: [
-            Text(
-              'Amount Range',
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 25,
-              ),
-            ),
-            Icon(
-              _expandedSections['amount_range']!
-                  ? Icons.expand_less
-                  : Icons.expand_more,
-            ),
-          ]
-      ),
+      child: Row(children: [
+        Text(
+          'Amount Range',
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            fontSize: 25,
+          ),
+        ),
+        Icon(
+          _expandedSections['amount_range']!
+              ? Icons.expand_less
+              : Icons.expand_more,
+        ),
+      ]),
     );
   }
 
-  Widget _buildAmountRangeFilterContent(StateSetter amtSetState){
+  Widget _buildAmountRangeFilterContent(StateSetter amtSetState) {
     return Column(
       children: [
         TextField(
@@ -901,7 +897,6 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
           inputFormatters: [
             FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}')),
             TextInputFormatter.withFunction((oldValue, newValue) {
-              // Auto-format to 2 decimal places
               if (newValue.text.contains('.')) {
                 final parts = newValue.text.split('.');
                 if (parts[1].length > 2) {
@@ -927,7 +922,6 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
           inputFormatters: [
             FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}')),
             TextInputFormatter.withFunction((oldValue, newValue) {
-              // Auto-format to 2 decimal places
               if (newValue.text.contains('.')) {
                 final parts = newValue.text.split('.');
                 if (parts[1].length > 2) {
@@ -945,13 +939,12 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
     );
   }
 
-  // ================ DATE RANGE FILTER ===================
-  Widget _buildDateRangeFilter(StateSetter setState){
+  Widget _buildDateRangeFilter(StateSetter setState) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _buildDateRangeTitle(setState),
-        if (_expandedSections['date_range']!)...[
+        if (_expandedSections['date_range']!) ...[
           const SizedBox(height: 8),
           _buildDateRangeFilterContent(setState),
         ]
@@ -959,29 +952,27 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
     );
   }
 
-  Widget _buildDateRangeTitle(StateSetter dateSetState){
+  Widget _buildDateRangeTitle(StateSetter dateSetState) {
     return InkWell(
-      onTap: (){
+      onTap: () {
         dateSetState(() {
           _expandedSections['date_range'] = !_expandedSections['date_range']!;
         });
       },
-      child: Row(
-          children: [
-            Text(
-              'Date Range',
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 25,
-              ),
-            ),
-            Icon(
-              _expandedSections['date_range']!
-                  ? Icons.expand_less
-                  : Icons.expand_more,
-            ),
-          ]
-      ),
+      child: Row(children: [
+        Text(
+          'Date Range',
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            fontSize: 25,
+          ),
+        ),
+        Icon(
+          _expandedSections['date_range']!
+              ? Icons.expand_less
+              : Icons.expand_more,
+        ),
+      ]),
     );
   }
 
@@ -1042,7 +1033,7 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
           },
         ),
         const SizedBox(height: 8),
-        if (_filterStartDate != null || _filterEndDate != null)...[
+        if (_filterStartDate != null || _filterEndDate != null) ...[
           TextButton(
             onPressed: () {
               dateSetState(() {
@@ -1061,160 +1052,265 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
     );
   }
 
-  // ========== Budget Content ==========
   Widget _buildBudgetContent(List<BudgetModel> budgets) {
-    String statusTab = '';
-    return StreamBuilder<QuerySnapshot>(
-      stream: _firestore
-          .collection('transactions')
-          .where('userId', isEqualTo: _auth.currentUser?.uid)
-          .where('isExpense', isEqualTo: true)
-          .snapshots(),
-      builder: (context, transactionSnapshot) {
-        if (transactionSnapshot.connectionState == ConnectionState.waiting) {
-          return _buildLoadingState();
+  String statusTab = '';
+  return StreamBuilder<QuerySnapshot>(
+    stream: getTransactionStream(
+      startDate: DateTime(_selectedDate.year, _selectedDate.month, 1),
+      endDate: DateTime(
+          _selectedDate.year, _selectedDate.month + 1, 0, 23, 59, 59),
+    ),
+    builder: (context, transactionSnapshot) {
+      // Handle waiting state
+      if (transactionSnapshot.connectionState == ConnectionState.waiting) {
+        return _buildLoadingState();
+      }
+
+      // Handle error state
+      if (transactionSnapshot.hasError) {
+        return _buildErrorState(transactionSnapshot.error);
+      }
+
+      // Handle no data (null or empty snapshot)
+      if (!transactionSnapshot.hasData || transactionSnapshot.data == null) {
+        return _buildEmptyState('Transactions'); // Or handle as needed
+      }
+
+      // Handle empty budgets case
+      if (budgets.isEmpty) {
+        switch (_activeTabIndex) {
+          case 0:
+            statusTab = 'All';
+            break;
+          case 1:
+            statusTab = 'Active';
+            break;
+          case 2:
+            statusTab = 'Completed';
+            break;
+          case 3:
+            statusTab = 'Failed';
+            break;
+          case 4:
+            statusTab = 'Stopped';
+            break;
+          case 5:
+            statusTab = 'Deleted';
+            break;
         }
+        return _buildEmptyState(statusTab);
+      }
 
-        if (budgets.isEmpty) {
-          switch (_activeTabIndex){
-            case 0:
-              statusTab = 'All';
-              break;
-            case 1:
-              statusTab = 'Active';
-              break;
-            case 2:
-              statusTab = 'Completed';
-              break;
-            case 3:
-              statusTab = 'Failed';
-              break;
-            case 4:
-              statusTab = 'Stopped';
-              break;
-            case 5:
-              statusTab = 'Deleted';
-              break;
-          }
-          return _buildEmptyState(statusTab);
-        }
+      // Process transactions
+      final allTransactions = transactionSnapshot.data!.docs
+          .map((doc) => TransactionModel.fromFirestore(doc))
+          .toList();
 
-        final budgetCategories = budgets.map((b) => b.budgetCategory).toSet().toList();
+      // Calculate totalSpent for the monthly overview
+      final totalSpent =
+          allTransactions.fold(0.0, (total, txn) => total + txn.amount);
 
-        // Use filter dates (fallback to budget dates if filter dates not set)
-        final startDate = _filterStartDate ?? budgets.fold<DateTime>(
-            DateTime.now(),
-                (prev, budget) => budget.startDate.isBefore(prev) ? budget.startDate : prev
-        );
+      // Filter transactions for budget-specific spending
+      final expenses = allTransactions
+          .where((txn) =>
+              budgets.any((budget) => budget.budgetId == txn.budgetId) &&
+              txn.date.isAfter((txn.budgetId != null
+                      ? budgets
+                          .firstWhere((b) => b.budgetId == txn.budgetId)
+                          .startDate
+                      : DateTime.now())
+                  .subtract(const Duration(seconds: 1))) &&
+              txn.date.isBefore((txn.budgetId != null
+                      ? budgets
+                          .firstWhere((b) => b.budgetId == txn.budgetId)
+                          .endDate
+                      : DateTime.now())
+                  .add(const Duration(seconds: 1))))
+          .toList();
 
-        final endDate = _filterEndDate ?? budgets.fold<DateTime>(
-            DateTime.now(),
-                (prev, budget) => budget.endDate.isAfter(prev) ? budget.endDate : prev
-        );
+      final spendingData = _calculateSpendingData(expenses, budgets);
 
-        // For calculate expenses correctly
-        final expenses = transactionSnapshot.data!.docs
-            .map((doc) => TransactionModel.fromFirestore(doc))
-            .where((txn) =>
-        budgetCategories.contains(txn.category) &&
-            txn.date.isAfter(startDate.subtract(const Duration(seconds: 1))) &&
-            txn.date.isBefore(endDate.add(const Duration(seconds: 1))))
-            .toList();
+      return SingleChildScrollView(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildOverallBudgetCard(spendingData.totalAllocated, totalSpent),
+            const SizedBox(height: 24),
+            _buildCategorySection(),
+            const SizedBox(height: 16),
+            _buildBudgetList(budgets, spendingData.spentPerBudget),
+            const SizedBox(height: 24),
+          ],
+        ),
+      );
+    },
+  );
+}
 
-        final spendingData = _calculateSpendingData(expenses, budgets);
-
-        return SingleChildScrollView(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildOverallBudgetCard(
-                  spendingData.totalAllocated, spendingData.totalSpent),
-              const SizedBox(height: 24),
-              _buildCategorySection(),
-              const SizedBox(height: 16),
-              _buildBudgetList(budgets, spendingData.spentPerCategory),
-              const SizedBox(height: 24),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  // ========== Helper Methods ==========
-  SpendingData _calculateSpendingData(List<TransactionModel>? transactionList, List<BudgetModel> budgets) {
+  SpendingData _calculateSpendingData(
+      List<TransactionModel>? transactionList, List<BudgetModel> budgets) {
     Map<String, double> spentPerCategory = {};
     Map<String, double> spentPerBudget = {};
-    double totalSpent = 0;
+    double totalSpent = 0; // Not used, kept for compatibility
 
     if (transactionList != null) {
-      // Define the first and last day of the selected month
-      final firstDay = DateTime(_selectedDate.year, _selectedDate.month, 1);
-      final lastDay = DateTime(
-          _selectedDate.year, _selectedDate.month + 1, 0, 23, 59, 59);
-
-      // Filter transactions for the selected month
-      final currentMonthTransactions = transactionList.where((txn) =>
-      txn.date.isAfter(firstDay.subtract(const Duration(seconds: 1))) &&
-          txn.date.isBefore(lastDay.add(const Duration(seconds: 1)))).toList();
-
-      // Calculate total spent using filtered transactions
-      totalSpent = currentMonthTransactions.fold(0, (total, txn) => total + txn.amount);
-
-      // Calculate spent per category using filtered transactions
-      for (var transaction in currentMonthTransactions) {
-
+      for (var transaction in transactionList) {
         spentPerCategory[transaction.category] =
             (spentPerCategory[transaction.category] ?? 0) + transaction.amount;
+        if (transaction.budgetId != null) {
+          spentPerBudget[transaction.budgetId!] =
+              (spentPerBudget[transaction.budgetId!] ?? 0) + transaction.amount;
+        }
       }
     }
 
-    double totalAllocated = budgets.fold(
-        0, (total, item) => total + item.targetAmount);
+    double totalAllocated =
+        budgets.fold(0, (total, item) => total + item.targetAmount);
 
     return SpendingData(
       totalAllocated: totalAllocated,
-      totalSpent: totalSpent,
+      totalSpent:
+          totalSpent, // Ignored since we calculate it in _buildBudgetContent
       spentPerCategory: spentPerCategory,
-      //spentPerBudget: spentPerBudget,
+      spentPerBudget: spentPerBudget,
     );
   }
 
+  // New method to update currentSpent for all budgets
+  Future<void> _updateAllBudgetsCurrentSpent() async {
+    final budgets = await _firestore
+        .collection('budgets')
+        .where('userId', isEqualTo: _auth.currentUser?.uid)
+        .get();
+
+    final batch = _firestore.batch();
+
+    for (var doc in budgets.docs) {
+      final budget = BudgetModel.fromFirestore(doc);
+      await updateCurrentSpent(budget);
+      batch.update(doc.reference, {
+        'currentSpent': budget.currentSpent,
+        'lastUpdated': FieldValue.serverTimestamp(),
+      });
+    }
+
+    await batch.commit();
+  }
+
   Future<void> updateCurrentSpent(BudgetModel budget) async {
-    // Get reference to the budget document
     final budgetDocRef = _firestore.collection('budgets').doc(budget.budgetId);
 
     final transactions = await _firestore
         .collection('transactions')
         .where('userId', isEqualTo: _auth.currentUser?.uid)
-        .where('category', isEqualTo: budget.budgetCategory)
+        .where('budgetId', isEqualTo: budget.budgetId)
         .where('isExpense', isEqualTo: true)
-        .where('date', isGreaterThanOrEqualTo: Timestamp.fromDate(budget.startDate))
+        .where('date',
+            isGreaterThanOrEqualTo: Timestamp.fromDate(budget.startDate))
         .where('date', isLessThanOrEqualTo: Timestamp.fromDate(budget.endDate))
         .get();
-
-    final batch = _firestore.batch();
 
     double currentSpent = transactions.docs.fold(0.0, (accumulatedTotal, doc) {
       final amount = (doc.data()['amount'] as num).toDouble();
       return accumulatedTotal + amount;
     });
 
-    // Update the budget document with new currentSpent value
-    batch.update(budgetDocRef, {
+    await budgetDocRef.update({
       'currentSpent': currentSpent,
+      'lastUpdated': FieldValue.serverTimestamp(),
     });
 
-    // Commit the batch
-    await batch.commit();
-
-    // Update the budget's status
     budget.currentSpent = currentSpent;
     budget.updateStatus();
   }
 
-  // ========== UI Components ==========
+  Future<void> updateFailedStatus(BudgetModel budget) async {
+    try {
+      DateTime failedDate = DateTime.now();
+      String status = budget.status.name;
+      setState(() {
+        status = Status.failed.name;
+      });
+
+      await FirebaseFirestore.instance
+          .collection('budgets')
+          .doc(budget.budgetId)
+          .update({
+        'status': status,
+        'overDate': Timestamp.fromDate(failedDate),
+      });
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text('Failed to change budget status: ${e.toString()}')),
+      );
+    }
+  }
+
+  Future<void> _handleRecurringBudgets() async {
+    final now = DateTime.now();
+    final budgets = await _firestore
+        .collection('budgets')
+        .where('userId', isEqualTo: _auth.currentUser?.uid)
+        .where('isRecurring', isEqualTo: true)
+        .where('endDate', isLessThanOrEqualTo: Timestamp.fromDate(now))
+        .get();
+
+    final batch = _firestore.batch();
+
+    for (var doc in budgets.docs) {
+      final budget = BudgetModel.fromFirestore(doc);
+
+      final duration = budget.endDate.difference(budget.startDate);
+      final newStartDate = budget.endDate.add(Duration(days: 1));
+      final newEndDate = newStartDate.add(duration);
+
+      final newBudget = {
+        'budgetId': _firestore.collection('budgets').doc().id,
+        'budgetCategory': budget.budgetCategory,
+        'budgetName': budget.budgetName,
+        'targetAmount': budget.targetAmount,
+        'remark': budget.remark,
+        'duration': budget.duration,
+        'customDay': budget.customDays,
+        'startDate': newStartDate,
+        'endDate': newEndDate,
+        'userId': budget.userId,
+        'status': 'active',
+        'isRecurring': budget.isRecurring,
+        'nextOccurrence': _calculateNextOccurrence(budget.duration, newEndDate,
+            customDay: budget.customDays),
+      };
+
+      await _firestore.collection('budgets').add(newBudget);
+    }
+
+    await batch.commit();
+  }
+
+  DateTime _calculateNextOccurrence(DurationCategory duration, DateTime endDate,
+      {int? customDay}) {
+    switch (duration) {
+      case DurationCategory.daily:
+        return endDate.add(const Duration(days: 1));
+      case DurationCategory.weekly:
+        return endDate.add(const Duration(days: 7));
+      case DurationCategory.monthly:
+        final nextMonth = endDate.month + 1;
+        final nextYear = endDate.year + (nextMonth > 12 ? 1 : 0);
+        final adjustedMonth = nextMonth > 12 ? nextMonth - 12 : nextMonth;
+        return DateTime(
+          nextYear,
+          adjustedMonth,
+          min(endDate.day, DateUtils.getDaysInMonth(nextYear, adjustedMonth)),
+        );
+      case DurationCategory.custom:
+        final days = customDay ?? 0;
+        return endDate.add(Duration(days: days));
+    }
+  }
+
   Widget _buildErrorState(dynamic error) {
     return Center(child: Text('Error: $error'));
   }
@@ -1287,12 +1383,12 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                _buildBudgetInfoColumn(
-                    'Allocated', 'RM ${totalAllocated.toStringAsFixed(2)}',
-                    Colors.blue),
+                _buildBudgetInfoColumn('Allocated',
+                    'RM ${totalAllocated.toStringAsFixed(2)}', Colors.blue),
                 _buildBudgetInfoColumn(
                     'Spent', 'RM ${totalSpent.toStringAsFixed(2)}', Colors.red),
-                _buildBudgetInfoColumn('Remaining',
+                _buildBudgetInfoColumn(
+                    'Remaining',
                     'RM ${(totalAllocated - totalSpent).toStringAsFixed(2)}',
                     Colors.green),
               ],
@@ -1330,8 +1426,9 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
       children: [
         Text(title, style: TextStyle(fontSize: 14, color: Colors.grey[600])),
         const SizedBox(height: 4),
-        Text(amount, style: TextStyle(
-            fontSize: 16, fontWeight: FontWeight.bold, color: color)),
+        Text(amount,
+            style: TextStyle(
+                fontSize: 16, fontWeight: FontWeight.bold, color: color)),
       ],
     );
   }
@@ -1348,11 +1445,12 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
     );
   }
 
-  Widget _buildBudgetList(List<BudgetModel> budgets, Map<String, double> spentPerCategory) {
+  Widget _buildBudgetList(
+      List<BudgetModel> budgets, Map<String, double> spentPerBudget) {
     final sortedBudgets = SortingUtils.sortBudgets(
       budgets: budgets,
       options: _sortingOptions,
-      spentPerCategory: spentPerCategory,
+      spentPerCategory: spentPerBudget,
       currentDate: _selectedDate,
     );
 
@@ -1360,18 +1458,19 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
       itemCount: sortedBudgets.length,
-      itemBuilder: (context, index) => _buildBudgetItem(sortedBudgets[index], spentPerCategory),
+      itemBuilder: (context, index) =>
+          _buildBudgetItem(sortedBudgets[index], spentPerBudget),
     );
   }
 
-  Widget _buildBudgetItem(BudgetModel budget, Map<String, double> spentPerCategory) {
-    final spent = spentPerCategory[budget.budgetCategory] ?? 0.0;
-    final progress = budget.targetAmount > 0 ? spent / budget.targetAmount : 0.0;
-    final isFailed = progress >= 1.0;
+  Widget _buildBudgetItem(
+      BudgetModel budget, Map<String, double> spentPerBudget) {
+    final spent = spentPerBudget[budget.budgetId] ?? budget.currentSpent;
+    final progress =
+        budget.targetAmount > 0 ? spent / budget.targetAmount : 0.0;
     final categoryColor = CategoryUtils.getCategoryColor(budget.budgetCategory);
 
-    updateCurrentSpent(budget);
-    budget.updateStatus();
+    budget.updateStatus(spent: spent);
 
     return GestureDetector(
       onTap: () => _navigateToBudgetDetail(budget),
@@ -1390,7 +1489,6 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
                   _buildRepeatIcon(budget.isRecurring),
                 ],
               ),
-
               const SizedBox(height: 16),
               _buildBudgetHeader(budget),
               const SizedBox(height: 16),
@@ -1467,7 +1565,7 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
     );
   }
 
-  Widget _buildRepeatIcon(bool isRepeat){
+  Widget _buildRepeatIcon(bool isRepeat) {
     return Tooltip(
       message: isRepeat ? 'Repeat Budget' : 'One-time Budget',
       child: Container(
@@ -1492,7 +1590,10 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
       children: [
         _buildCategoryIcon(budget),
         const SizedBox(width: 12),
-        _buildBudgetTitle(budget),
+        Flexible(
+          // Allow text to wrap or shrink
+          child: _buildBudgetTitle(budget),
+        ),
         const Spacer(),
         _buildEditButton(budget),
       ],
@@ -1517,19 +1618,12 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
   Widget _buildBudgetTitle(BudgetModel budget) {
     return Row(
       children: [
-        Text(
-          budget.budgetCategory,
-          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-        ),
-        const SizedBox(width: 9),
-        const Text(
-          '-',
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-        ),
-        const SizedBox(width: 9),
-        Text(
-          budget.budgetName,
-          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+        Flexible(
+          child: Text(
+            budget.budgetName,
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            overflow: TextOverflow.ellipsis,
+          ),
         ),
       ],
     );
@@ -1542,7 +1636,8 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
     );
   }
 
-  Widget _buildProgressInfo(double spent, double targetAmount, double progress) {
+  Widget _buildProgressInfo(
+      double spent, double targetAmount, double progress) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
@@ -1579,12 +1674,13 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
     );
   }
 
-  Widget _buildProgressDetail(double spent, double targetAmount,){
+  Widget _buildProgressDetail(double spent, double targetAmount) {
     final remainAmount = targetAmount - spent;
 
     return Row(
       children: [
-        Text('Remaining Amount: RM ${remainAmount.toStringAsFixed(2)}',
+        Text(
+          'Remaining Amount: RM ${remainAmount.toStringAsFixed(2)}',
           style: TextStyle(
             fontSize: 16,
             color: Colors.purple,
@@ -1601,13 +1697,11 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
   }
 
   Widget _buildBudgetDeadline(DateTime startDate, DateTime endDate) {
-    // Calculate progress values
     final totalDuration = endDate.difference(startDate);
     final elapsedDuration = DateTime.now().difference(startDate);
     final progress = elapsedDuration.inSeconds / totalDuration.inSeconds;
     final percentage = (progress * 100).clamp(0, 100).toInt();
 
-    // Format dates
     final startDateFormatted = DateFormat('dd/MM/yyyy').format(startDate);
     final endDateFormatted = DateFormat('dd/MM/yyyy').format(endDate);
 
@@ -1624,7 +1718,7 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
               ),
             ),
             Text(
-              '$percentage%',
+              '${percentage.clamp(0, 100).toInt()}%',
               style: TextStyle(
                 fontWeight: FontWeight.bold,
                 color: _getProgressColor(progress),
@@ -1636,7 +1730,8 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
         LinearProgressIndicator(
           value: progress,
           backgroundColor: Colors.grey[200],
-          valueColor: AlwaysStoppedAnimation<Color>(_getProgressColor(progress)),
+          valueColor:
+              AlwaysStoppedAnimation<Color>(_getProgressColor(progress)),
           minHeight: 8,
           borderRadius: BorderRadius.circular(4),
         ),
@@ -1652,7 +1747,6 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
     final isPast = remainingDuration.isNegative;
     final totalSeconds = remainingDuration.inSeconds;
 
-    // Calculate all time units
     final days = remainingDuration.inDays;
     final hours = remainingDuration.inHours % 24;
     final minutes = remainingDuration.inMinutes % 60;
@@ -1664,24 +1758,19 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
     if (isPast) {
       remainingText = 'Budget has ended';
       textStyle = TextStyle(fontSize: 16, color: Colors.red);
-    }
-    else if (days > 0) {
+    } else if (days > 0) {
       remainingText = 'Remaining: $days day${days != 1 ? 's' : ''}';
       textStyle = TextStyle(fontSize: 16, color: Colors.blue);
-    }
-    else if (remainingDuration.inHours > 0) {
+    } else if (remainingDuration.inHours > 0) {
       remainingText = 'Remaining: $hours hour${hours != 1 ? 's' : ''}';
       textStyle = TextStyle(fontSize: 16, color: Colors.blue);
-    }
-    else if (remainingDuration.inMinutes > 0) {
+    } else if (remainingDuration.inMinutes > 0) {
       remainingText = 'Remaining: $minutes minute${minutes != 1 ? 's' : ''}';
       textStyle = TextStyle(fontSize: 16, color: Colors.orange);
-    }
-    else if (totalSeconds > 0) {
+    } else if (totalSeconds > 0) {
       remainingText = 'Remaining: $seconds second${seconds != 1 ? 's' : ''}';
       textStyle = TextStyle(fontSize: 16, color: Colors.orange);
-    }
-    else {
+    } else {
       remainingText = 'Budget has ended';
       textStyle = TextStyle(fontSize: 16, color: Colors.red);
     }
@@ -1696,7 +1785,6 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
     );
   }
 
-  // ========== Bottom Navigation ==========
   BottomNavigationBar _buildBottomNavigationBar() {
     return BottomNavigationBar(
       currentIndex: _currentIndex,
@@ -1713,22 +1801,18 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
     );
   }
 
-  // ========== Navigation Methods ==========
   void _handleBottomNavigationTap(int index) {
     if (index == 0) {
       Navigator.pushNamed(context, '/home');
-    }
-    else if (index == 1) {
+    } else if (index == 1) {
       Navigator.pushNamed(context, '/transactions');
-    }
-    else if (index == 3) {
+    } else if (index == 3) {
       Navigator.pushNamed(context, '/reports_overview');
-    }
-    else if (index == 4) {
+    } else if (index == 4) {
       Navigator.pushNamed(context, '/savings_goal');
-    }
-    else {
+    } else {
       setState(() => _currentIndex = index);
+      _updateAllBudgetsCurrentSpent();
     }
   }
 
@@ -1758,7 +1842,6 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
     Navigator.pushNamed(context, '/budget_history');
   }
 
-  // ========== Month Picker ==========
   Future<void> _selectMonth(BuildContext context) async {
     final DateTime? picked = await showMonthPicker(
       context: context,
@@ -1773,17 +1856,16 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
   }
 }
 
-// ========== Helper Classes ==========
 class SpendingData {
   final double totalAllocated;
   final double totalSpent;
   final Map<String, double> spentPerCategory;
-  //final Map<String, double> spentPerBudget;
+  final Map<String, double> spentPerBudget;
 
   SpendingData({
     required this.totalAllocated,
     required this.totalSpent,
     required this.spentPerCategory,
-    //required this.spentPerBudget,
+    required this.spentPerBudget,
   });
 }

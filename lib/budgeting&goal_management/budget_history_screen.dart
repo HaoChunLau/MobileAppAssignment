@@ -55,14 +55,6 @@ class _BudgetHistoryScreenState extends State<BudgetHistoryScreen> {
           itemBuilder: (BuildContext context) =>
           [
             PopupMenuItem<String>(
-              value: 'settings',
-              child: ListTile(
-                leading: Icon(Icons.settings, size: 20),
-                title: Text('Settings'),
-                dense: true,
-              ),
-            ),
-            PopupMenuItem<String>(
                 value: 'search',
                 child: ListTile(
                   leading: Icon(
@@ -108,9 +100,6 @@ class _BudgetHistoryScreenState extends State<BudgetHistoryScreen> {
   // ================================
   void _handleMenuSelection(String value) {
     switch (value) {
-      case 'settings':
-        Navigator.pushNamed(context, '/settings');
-        break;
       case 'sort':
         //_showSortDialog(context);
         break;

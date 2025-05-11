@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:mobile_app_assignment/models/transaction_model.dart';
+import 'package:mobile_app_assignment/category_utils.dart';
 import 'package:month_picker_dialog/month_picker_dialog.dart';
 
 class IncomeListScreen extends StatefulWidget {
@@ -35,7 +36,7 @@ class IncomeListScreenState extends State<IncomeListScreen> {
   void _initializeQuery() {
     final firstDayOfMonth = DateTime(_selectedDate.year, _selectedDate.month, 1);
     final lastDayOfMonth = DateTime(_selectedDate.year, _selectedDate.month + 1, 0);
-    
+
     _query = _firestore
         .collection('transactions')
         .where('userId', isEqualTo: _auth.currentUser?.uid)
@@ -66,7 +67,7 @@ class IncomeListScreenState extends State<IncomeListScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text('Income - ${DateFormat('MMM yyyy').format(_selectedDate)}'),
-        automaticallyImplyLeading: false, // Remove back arrow
+        automaticallyImplyLeading: false,
         actions: [
           IconButton(
             icon: const Icon(Icons.calendar_today),
@@ -146,9 +147,9 @@ class IncomeListScreenState extends State<IncomeListScreen> {
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: ListTile(
         leading: CircleAvatar(
-          backgroundColor: _getCategoryColor(transaction.category),
+          backgroundColor: CategoryUtils.getCategoryColor(transaction.category),
           child: Icon(
-            _getCategoryIcon(transaction.category),
+            CategoryUtils.getCategoryIcon(transaction.category),
             color: Colors.white,
             size: 20,
           ),
@@ -210,52 +211,13 @@ class IncomeListScreenState extends State<IncomeListScreen> {
     );
   }
 
-  Color _getCategoryColor(String category) {
-    switch (category) {
-      case 'Salary':
-        return Colors.green;
-      case 'Freelance':
-        return Colors.blue;
-      case 'Investment':
-        return Colors.purple;
-      case 'Gift':
-        return Colors.pink;
-      case 'Bonus':
-        return Colors.amber;
-      case 'Dividend':
-        return Colors.teal;
-      default:
-        return Colors.grey;
-    }
-  }
-
-  IconData _getCategoryIcon(String category) {
-    switch (category) {
-      case 'Salary':
-        return Icons.account_balance;
-      case 'Freelance':
-        return Icons.work;
-      case 'Investment':
-        return Icons.trending_up;
-      case 'Gift':
-        return Icons.card_giftcard;
-      case 'Bonus':
-        return Icons.star;
-      case 'Dividend':
-        return Icons.attach_money;
-      default:
-        return Icons.attach_money;
-    }
-  }
-
   String _formatDate(DateTime date) {
     final now = DateTime.now();
-    
     if (date.year == now.year && date.month == now.month && date.day == now.day) {
       return 'Today';
-    } else if (date.year == now.year && 
-               date.month == now.month && 
-               date.day == now.day - 1) {
+    } else if (date.year == now.year &&
+        date.month == now.month &&
+        date.day == now.day - 1) {
       return 'Yesterday';
     } else {
       return DateFormat('dd/MM/yyyy').format(date);

@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:mobile_app_assignment/models/transaction_model.dart';
+import 'package:mobile_app_assignment/category_utils.dart';
 
 class EditIncomeScreen extends StatefulWidget {
   const EditIncomeScreen({super.key});
@@ -15,25 +16,13 @@ class EditIncomeScreenState extends State<EditIncomeScreen> {
   final _formKey = GlobalKey<FormState>();
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  
-  // Form field controllers
+
   late TextEditingController _titleController;
   late TextEditingController _amountController;
   late TextEditingController _descriptionController;
-  
+
   late DateTime _selectedDate;
   late String _selectedCategory;
-  
-  // Predefined categories
-  final List<String> _categories = [
-    'Salary',
-    'Freelance',
-    'Investment',
-    'Gift',
-    'Bonus',
-    'Refund',
-    'Other',
-  ];
 
   bool _isLoading = true;
   bool _hasLoadedInitialData = false;
@@ -52,7 +41,7 @@ class EditIncomeScreenState extends State<EditIncomeScreen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    
+
     final arguments = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
     if (arguments != null && arguments.containsKey('id') && !_hasLoadedInitialData) {
       _incomeId = arguments['id'] as String;
@@ -73,7 +62,7 @@ class EditIncomeScreenState extends State<EditIncomeScreen> {
       final doc = await _firestore.collection('transactions').doc(_incomeId).get();
       if (doc.exists) {
         final transaction = TransactionModel.fromFirestore(doc);
-        
+
         setState(() {
           _titleController.text = transaction.title;
           _amountController.text = transaction.amount.toString();
@@ -127,7 +116,6 @@ class EditIncomeScreenState extends State<EditIncomeScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Title field
                     TextFormField(
                       controller: _titleController,
                       decoration: const InputDecoration(
@@ -144,8 +132,6 @@ class EditIncomeScreenState extends State<EditIncomeScreen> {
                       },
                     ),
                     const SizedBox(height: 16),
-                    
-                    // Amount field
                     TextFormField(
                       controller: _amountController,
                       decoration: const InputDecoration(
@@ -166,8 +152,6 @@ class EditIncomeScreenState extends State<EditIncomeScreen> {
                       },
                     ),
                     const SizedBox(height: 16),
-                    
-                    // Date picker
                     InkWell(
                       onTap: _pickDate,
                       child: InputDecorator(
@@ -188,8 +172,6 @@ class EditIncomeScreenState extends State<EditIncomeScreen> {
                       ),
                     ),
                     const SizedBox(height: 16),
-                    
-                    // Category dropdown
                     InputDecorator(
                       decoration: const InputDecoration(
                         labelText: 'Category',
@@ -200,14 +182,14 @@ class EditIncomeScreenState extends State<EditIncomeScreen> {
                         child: DropdownButton<String>(
                           value: _selectedCategory,
                           isExpanded: true,
-                          items: _categories.map((String category) {
+                          items: CategoryUtils.incomeCategories.map((String category) {
                             return DropdownMenuItem<String>(
                               value: category,
                               child: Row(
                                 children: [
                                   Icon(
-                                    _getCategoryIcon(category),
-                                    color: _getCategoryColor(category),
+                                    CategoryUtils.getCategoryIcon(category),
+                                    color: CategoryUtils.getCategoryColor(category),
                                     size: 20,
                                   ),
                                   const SizedBox(width: 8),
@@ -227,8 +209,6 @@ class EditIncomeScreenState extends State<EditIncomeScreen> {
                       ),
                     ),
                     const SizedBox(height: 16),
-                    
-                    // Description field
                     TextFormField(
                       controller: _descriptionController,
                       decoration: const InputDecoration(
@@ -240,8 +220,6 @@ class EditIncomeScreenState extends State<EditIncomeScreen> {
                       maxLines: 3,
                     ),
                     const SizedBox(height: 24),
-                    
-                    // Submit button
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton(
@@ -269,7 +247,7 @@ class EditIncomeScreenState extends State<EditIncomeScreen> {
       firstDate: DateTime(2020),
       lastDate: DateTime.now(),
     );
-    
+
     if (pickedDate != null && pickedDate != _selectedDate) {
       setState(() {
         _selectedDate = pickedDate;
@@ -284,7 +262,7 @@ class EditIncomeScreenState extends State<EditIncomeScreen> {
           _isLoading = true;
         });
 
-        final user = _auth.currentUser!;  // No null check needed
+        final user = _auth.currentUser!;
 
         TransactionModel transaction = TransactionModel(
           id: _incomeId,
@@ -296,7 +274,7 @@ class EditIncomeScreenState extends State<EditIncomeScreen> {
               ? null
               : _descriptionController.text,
           userId: user.uid,
-          isExpense: false, // Important: Set to false for income
+          isExpense: false,
         );
 
         await _firestore.collection('transactions').doc(_incomeId).update(transaction.toMap());
@@ -373,43 +351,5 @@ class EditIncomeScreenState extends State<EditIncomeScreen> {
         );
       },
     );
-  }
-
-  Color _getCategoryColor(String category) {
-    switch (category) {
-      case 'Salary':
-        return Colors.green;
-      case 'Freelance':
-        return Colors.blue;
-      case 'Investment':
-        return Colors.purple;
-      case 'Gift':
-        return Colors.pink;
-      case 'Bonus':
-        return Colors.amber;
-      case 'Refund':
-        return Colors.teal;
-      default:
-        return Colors.grey;
-    }
-  }
-
-  IconData _getCategoryIcon(String category) {
-    switch (category) {
-      case 'Salary':
-        return Icons.account_balance;
-      case 'Freelance':
-        return Icons.work;
-      case 'Investment':
-        return Icons.trending_up;
-      case 'Gift':
-        return Icons.card_giftcard;
-      case 'Bonus':
-        return Icons.star;
-      case 'Refund':
-        return Icons.replay;
-      default:
-        return Icons.attach_money;
-    }
   }
 }

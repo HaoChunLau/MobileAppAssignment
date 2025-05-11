@@ -1,12 +1,10 @@
-
 import 'package:cloud_firestore/cloud_firestore.dart';
-
 
 enum DurationCategory { daily, weekly, monthly, custom; @override String toString() => name; }
 enum Status { active, completed, failed, stopped, deleted; @override String toString() => name; }
 
 class BudgetModel {
-  String budgetId;
+  String? budgetId;
   String budgetCategory;
   String budgetName;
   double targetAmount;    //user set
@@ -29,9 +27,9 @@ class BudgetModel {
   bool get isActive => status == Status.active;
   bool get isCompleted => status == Status.completed;
   bool get isFailed => status == Status.failed;
-  
+
   BudgetModel({
-    required this.budgetId,
+    this.budgetId,
     required this.budgetCategory,
     required this.budgetName,
     required this.targetAmount,
@@ -48,7 +46,7 @@ class BudgetModel {
     required this.endDate,
     required this.userId,
   }) : currentSpent = currentSpent ?? 0.0;  // Default to 0 if not provided
-  
+
   // Convert model to Map for storing in Firestore
   Map<String, dynamic> toMap() {
     return {
@@ -72,12 +70,12 @@ class BudgetModel {
       'userId': userId,
     };
   }
-  
+
   // Create model from Firestore document
   factory BudgetModel.fromFirestore(DocumentSnapshot doc) {
     Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
     return BudgetModel(
-      budgetId: data['budgetId'] as String? ?? doc.id,
+      budgetId: doc.id,
       budgetCategory: data['budgetCategory'] as String? ?? '',
       budgetName: data['budgetName'] as String? ?? 'Unnamed Budget',
       targetAmount: (data['targetAmount'] ?? 0).toDouble(),
@@ -144,20 +142,22 @@ class BudgetModel {
   }
 
   // Update Status
-  void updateStatus({DateTime? currentDate}) {
+  void updateStatus({DateTime? currentDate, double? spent}) {
     final now = currentDate ?? DateTime.now();
 
     // If already in a terminal state, don't change
     if (status != Status.active) return;
 
-    // Check for failed conditions
-    if (currentSpent >= targetAmount) {
-      status = Status.failed;
-      overDate ??= now; // Set overDate if not already set
-    }
-    // Check for COMPLETED status (endDate passed & budget not exceeded)
-    else if (now.isAfter(endDate)) {
-      status = Status.completed;
+    if (spent != null){
+      // Check for failed conditions
+      if (currentSpent >= targetAmount) {
+        status = Status.failed;
+        overDate ??= now; // Set overDate if not already set
+      }
+      // Check for COMPLETED status (endDate passed & budget not exceeded)
+      else if (now.isAfter(endDate)) {
+        status = Status.completed;
+      }
     }
   }
 

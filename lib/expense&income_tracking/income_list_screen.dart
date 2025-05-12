@@ -19,6 +19,7 @@ class IncomeListScreenState extends State<IncomeListScreen> {
   bool _isLoading = true;
   late Query _query;
   DateTime _selectedDate = DateTime.now();
+  _FilterOptions _filterOptions = _FilterOptions();
 
   @override
   void initState() {
@@ -34,16 +35,32 @@ class IncomeListScreenState extends State<IncomeListScreen> {
   }
 
   void _initializeQuery() {
+    final userId = _auth.currentUser?.uid;
+    if (userId == null) {
+      setState(() {
+        _query = _firestore.collection('transactions').where('userId', isEqualTo: '');
+      });
+      return;
+    }
+
     final firstDayOfMonth = DateTime(_selectedDate.year, _selectedDate.month, 1);
     final lastDayOfMonth = DateTime(_selectedDate.year, _selectedDate.month + 1, 0);
 
-    _query = _firestore
+    Query query = _firestore
         .collection('transactions')
-        .where('userId', isEqualTo: _auth.currentUser?.uid)
+        .where('userId', isEqualTo: userId)
         .where('isExpense', isEqualTo: false)
         .where('date', isGreaterThanOrEqualTo: Timestamp.fromDate(firstDayOfMonth))
-        .where('date', isLessThanOrEqualTo: Timestamp.fromDate(lastDayOfMonth))
-        .orderBy('date', descending: true);
+        .where('date', isLessThanOrEqualTo: Timestamp.fromDate(lastDayOfMonth));
+
+    if (_filterOptions.category != null) {
+      query = query.where('category', isEqualTo: _filterOptions.category);
+    }
+
+    query = query.orderBy('date', descending: true);
+    setState(() {
+      _query = query;
+    });
   }
 
   Future<void> _selectMonth(BuildContext context) async {
@@ -62,6 +79,85 @@ class IncomeListScreenState extends State<IncomeListScreen> {
     }
   }
 
+  void _showFilterDialog() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        final tempFilters = _FilterOptions.from(_filterOptions);
+        return AlertDialog(
+          title: const Text(
+            'Filter Income by Category',
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
+          content: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                DropdownButtonFormField<String?>(
+                  value: tempFilters.category,
+                  hint: const Text('Select a category'),
+                  decoration: InputDecoration(
+                    labelText: 'Category',
+                    labelStyle: const TextStyle(color: Colors.blueGrey),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12.0),
+                      borderSide: const BorderSide(color: Colors.blueGrey),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12.0),
+                      borderSide: const BorderSide(color: Colors.blueGrey),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12.0),
+                      borderSide: const BorderSide(color: Colors.blue, width: 2.0),
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
+                  ),
+                  items: [
+                    const DropdownMenuItem<String?>(value: null, child: Text('All Categories')),
+                    ...CategoryUtils.incomeCategories.map((category) => DropdownMenuItem<String>(
+                      value: category,
+                      child: Text(category),
+                    )),
+                  ],
+                  onChanged: (value) {
+                    setState(() {
+                      tempFilters.category = value;
+                    });
+                  },
+                  isExpanded: true, // Ensure dropdown takes full width
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                setState(() {
+                  _filterOptions = _FilterOptions(); // Reset filters
+                  _initializeQuery();
+                });
+                Navigator.pop(context);
+              },
+              child: const Text('Clear', style: TextStyle(color: Colors.red)),
+            ),
+            TextButton(
+              onPressed: () {
+                setState(() {
+                  _filterOptions = tempFilters;
+                  _initializeQuery();
+                });
+                Navigator.pop(context);
+              },
+              child: const Text('Apply', style: TextStyle(color: Colors.blue)),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -73,35 +169,40 @@ class IncomeListScreenState extends State<IncomeListScreen> {
             icon: const Icon(Icons.calendar_today),
             onPressed: () => _selectMonth(context),
           ),
+          IconButton(
+            icon: const Icon(Icons.filter_list),
+            onPressed: _showFilterDialog,
+            tooltip: 'Filter Income',
+          ),
         ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : StreamBuilder<QuerySnapshot>(
-              stream: _query.snapshots(),
-              builder: (context, snapshot) {
-                if (snapshot.hasError) {
-                  return Center(child: Text('Error: ${snapshot.error}'));
-                }
+        stream: _query.snapshots(),
+        builder: (context, snapshot) {
+          if (snapshot.hasError) {
+            return Center(child: Text('Error: ${snapshot.error}'));
+          }
 
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
 
-                if (snapshot.data?.docs.isEmpty ?? true) {
-                  return _buildEmptyState();
-                }
+          if (snapshot.data?.docs.isEmpty ?? true) {
+            return _buildEmptyState();
+          }
 
-                return ListView.builder(
-                  itemCount: snapshot.data?.docs.length,
-                  itemBuilder: (context, index) {
-                    final doc = snapshot.data?.docs[index];
-                    final transaction = TransactionModel.fromFirestore(doc!);
-                    return _buildIncomeItem(transaction, doc.id);
-                  },
-                );
-              },
-            ),
+          return ListView.builder(
+            itemCount: snapshot.data?.docs.length,
+            itemBuilder: (context, index) {
+              final doc = snapshot.data?.docs[index];
+              final transaction = TransactionModel.fromFirestore(doc!);
+              return _buildIncomeItem(transaction, doc.id);
+            },
+          );
+        },
+      ),
       floatingActionButton: FloatingActionButton(
         onPressed: () {
           Navigator.pushNamed(context, '/add_income');
@@ -168,7 +269,7 @@ class IncomeListScreenState extends State<IncomeListScreen> {
                 color: Colors.green,
               ),
             ),
-            const SizedBox(width: 16),
+            const SizedBox(width: 8),
             IconButton(
               icon: const Icon(Icons.edit, color: Colors.blue),
               tooltip: 'Edit Income',
@@ -179,6 +280,11 @@ class IncomeListScreenState extends State<IncomeListScreen> {
                   arguments: {'id': docId, 'transaction': transaction},
                 );
               },
+            ),
+            IconButton(
+              icon: const Icon(Icons.delete, color: Colors.red),
+              tooltip: 'Delete Income',
+              onPressed: () => _showDeleteConfirmation(docId),
             ),
           ],
         ),
@@ -211,6 +317,79 @@ class IncomeListScreenState extends State<IncomeListScreen> {
     );
   }
 
+  void _showDeleteConfirmation(String docId) {
+    showDialog(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          title: const Text('Delete Income'),
+          content: const Text('Are you sure you want to delete this income?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.of(dialogContext).pop();
+                _deleteIncome(docId);
+              },
+              child: const Text(
+                'Delete',
+                style: TextStyle(color: Colors.red),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _deleteIncome(String docId) async {
+    try {
+      setState(() {
+        _isLoading = true;
+      });
+
+      // Fetch the transaction data before deletion for undo
+      final docSnapshot = await _firestore.collection('transactions').doc(docId).get();
+      if (!docSnapshot.exists) {
+        throw Exception('Transaction not found');
+      }
+      final deletedTransaction = docSnapshot.data()!;
+
+      // Delete the transaction from Firestore
+      await _firestore.collection('transactions').doc(docId).delete();
+
+      if (!mounted) return;
+
+      // Show snackbar with undo option
+      final snackBar = SnackBar(
+        content: const Text('Income deleted successfully'),
+        action: SnackBarAction(
+          label: 'Undo',
+          onPressed: () async {
+            // Restore the transaction
+            await _firestore.collection('transactions').doc(docId).set(deletedTransaction);
+          },
+        ),
+        duration: const Duration(seconds: 5),
+      );
+      ScaffoldMessenger.of(context).showSnackBar(snackBar);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error deleting income: ${e.toString()}')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
   String _formatDate(DateTime date) {
     final now = DateTime.now();
     if (date.year == now.year && date.month == now.month && date.day == now.day) {
@@ -223,4 +402,12 @@ class IncomeListScreenState extends State<IncomeListScreen> {
       return DateFormat('dd/MM/yyyy').format(date);
     }
   }
+}
+
+class _FilterOptions {
+  String? category;
+
+  _FilterOptions();
+
+  _FilterOptions.from(_FilterOptions other) : category = other.category;
 }

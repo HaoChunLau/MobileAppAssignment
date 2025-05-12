@@ -78,9 +78,9 @@ class EditIncomeScreenState extends State<EditIncomeScreen> {
       } else {
         if (!mounted) return;
         Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Income not found')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Income not found')));
       }
     } catch (e) {
       if (!mounted) return;
@@ -102,148 +102,147 @@ class EditIncomeScreenState extends State<EditIncomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Edit Income'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.delete),
-            onPressed: _showDeleteConfirmation,
-          ),
-        ],
-      ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
-              padding: const EdgeInsets.all(16.0),
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    TextFormField(
-                      controller: _titleController,
-                      decoration: const InputDecoration(
-                        labelText: 'Title',
-                        hintText: 'e.g., Monthly Salary',
-                        border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.title),
-                      ),
-                      validator: (value) {
-                        if (value == null || value.isEmpty) {
-                          return 'Please enter a title';
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: _amountController,
-                      decoration: const InputDecoration(
-                        labelText: 'Amount (RM)',
-                        hintText: 'e.g., 4500.00',
-                        border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.attach_money),
-                      ),
-                      keyboardType:
-                          TextInputType.numberWithOptions(decimal: true),
-                      validator: (value) {
-                        if (value == null || value.isEmpty) {
-                          return 'Please enter an amount';
-                        }
-                        if (double.tryParse(value) == null) {
-                          return 'Please enter a valid number';
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 16),
-                    InkWell(
-                      onTap: _pickDate,
-                      child: InputDecorator(
+      appBar: AppBar(title: const Text('Edit Income')),
+      body:
+          _isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : SingleChildScrollView(
+                padding: const EdgeInsets.all(16.0),
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      TextFormField(
+                        controller: _titleController,
                         decoration: const InputDecoration(
-                          labelText: 'Date',
+                          labelText: 'Title',
+                          hintText: 'e.g., Monthly Salary',
                           border: OutlineInputBorder(),
-                          prefixIcon: Icon(Icons.calendar_today),
+                          prefixIcon: Icon(Icons.title),
                         ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              DateFormat('dd MMM yyyy').format(_selectedDate),
-                            ),
-                            const Icon(Icons.arrow_drop_down),
-                          ],
+                        validator: (value) {
+                          if (value == null || value.isEmpty) {
+                            return 'Please enter a title';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: _amountController,
+                        decoration: const InputDecoration(
+                          labelText: 'Amount (RM)',
+                          hintText: 'e.g., 4500.00',
+                          border: OutlineInputBorder(),
+                          prefixIcon: Icon(Icons.attach_money),
                         ),
+                        keyboardType: TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        validator: (value) {
+                          if (value == null || value.isEmpty) {
+                            return 'Please enter an amount';
+                          }
+                          if (double.tryParse(value) == null) {
+                            return 'Please enter a valid number';
+                          }
+                          return null;
+                        },
                       ),
-                    ),
-                    const SizedBox(height: 16),
-                    InputDecorator(
-                      decoration: const InputDecoration(
-                        labelText: 'Category',
-                        border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.category),
-                      ),
-                      child: DropdownButtonHideUnderline(
-                        child: DropdownButton<String>(
-                          value: _selectedCategory,
-                          isExpanded: true,
-                          items: CategoryUtils.incomeCategories
-                              .map((String category) {
-                            return DropdownMenuItem<String>(
-                              value: category,
-                              child: Row(
-                                children: [
-                                  Icon(
-                                    CategoryUtils.getCategoryIcon(category),
-                                    color: CategoryUtils.getCategoryColor(
-                                        category),
-                                    size: 20,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Text(category),
-                                ],
+                      const SizedBox(height: 16),
+                      InkWell(
+                        onTap: _pickDate,
+                        child: InputDecorator(
+                          decoration: const InputDecoration(
+                            labelText: 'Date',
+                            border: OutlineInputBorder(),
+                            prefixIcon: Icon(Icons.calendar_today),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                DateFormat('dd MMM yyyy').format(_selectedDate),
                               ),
-                            );
-                          }).toList(),
-                          onChanged: (String? newValue) {
-                            if (newValue != null) {
-                              setState(() {
-                                _selectedCategory = newValue;
-                              });
-                            }
-                          },
+                              const Icon(Icons.arrow_drop_down),
+                            ],
+                          ),
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: _descriptionController,
-                      decoration: const InputDecoration(
-                        labelText: 'Description (Optional)',
-                        hintText: 'Add notes about this income',
-                        border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.description),
-                      ),
-                      maxLines: 3,
-                    ),
-                    const SizedBox(height: 24),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: _updateIncome,
-                        style: ElevatedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 16),
+                      const SizedBox(height: 16),
+                      InputDecorator(
+                        decoration: const InputDecoration(
+                          labelText: 'Category',
+                          border: OutlineInputBorder(),
+                          prefixIcon: Icon(Icons.category),
                         ),
-                        child: const Text(
-                          'Update Income',
-                          style: TextStyle(fontSize: 16),
+                        child: DropdownButtonHideUnderline(
+                          child: DropdownButton<String>(
+                            value: _selectedCategory,
+                            isExpanded: true,
+                            items:
+                                CategoryUtils.incomeCategories.map((
+                                  String category,
+                                ) {
+                                  return DropdownMenuItem<String>(
+                                    value: category,
+                                    child: Row(
+                                      children: [
+                                        Icon(
+                                          CategoryUtils.getCategoryIcon(
+                                            category,
+                                          ),
+                                          color: CategoryUtils.getCategoryColor(
+                                            category,
+                                          ),
+                                          size: 20,
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Text(category),
+                                      ],
+                                    ),
+                                  );
+                                }).toList(),
+                            onChanged: (String? newValue) {
+                              if (newValue != null) {
+                                setState(() {
+                                  _selectedCategory = newValue;
+                                });
+                              }
+                            },
+                          ),
                         ),
                       ),
-                    ),
-                  ],
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: _descriptionController,
+                        decoration: const InputDecoration(
+                          labelText: 'Description (Optional)',
+                          hintText: 'Add notes about this income',
+                          border: OutlineInputBorder(),
+                          prefixIcon: Icon(Icons.description),
+                        ),
+                        maxLines: 3,
+                      ),
+                      const SizedBox(height: 24),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton(
+                          onPressed: _updateIncome,
+                          style: ElevatedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                          ),
+                          child: const Text(
+                            'Update Income',
+                            style: TextStyle(fontSize: 16),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            ),
     );
   }
 
@@ -277,9 +276,10 @@ class EditIncomeScreenState extends State<EditIncomeScreen> {
           amount: double.parse(_amountController.text),
           date: _selectedDate,
           category: _selectedCategory,
-          notes: _descriptionController.text.isEmpty
-              ? null
-              : _descriptionController.text,
+          notes:
+              _descriptionController.text.isEmpty
+                  ? null
+                  : _descriptionController.text,
           userId: user.uid,
           isExpense: false,
         );
@@ -309,62 +309,5 @@ class EditIncomeScreenState extends State<EditIncomeScreen> {
         }
       }
     }
-  }
-
-  void _showDeleteConfirmation() {
-    showDialog(
-      context: context,
-      builder: (BuildContext dialogContext) {
-        return AlertDialog(
-          title: const Text('Delete Income'),
-          content: const Text('Are you sure you want to delete this income?'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text('Cancel'),
-            ),
-            TextButton(
-              onPressed: () async {
-                Navigator.of(dialogContext).pop();
-                setState(() {
-                  _isLoading = true;
-                });
-
-                try {
-                  await _firestore
-                      .collection('transactions')
-                      .doc(_incomeId)
-                      .delete();
-
-                  if (!mounted) return;
-
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Income deleted')),
-                  );
-                  Navigator.popUntil(context, (route) => route.isFirst);
-                } catch (e) {
-                  if (!mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                        content:
-                            Text('Error deleting income: ${e.toString()}')),
-                  );
-                } finally {
-                  if (mounted) {
-                    setState(() {
-                      _isLoading = false;
-                    });
-                  }
-                }
-              },
-              child: const Text(
-                'Delete',
-                style: TextStyle(color: Colors.red),
-              ),
-            ),
-          ],
-        );
-      },
-    );
   }
 }

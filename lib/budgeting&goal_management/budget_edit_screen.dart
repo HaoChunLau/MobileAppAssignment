@@ -15,7 +15,7 @@ class BudgetEditScreen extends StatefulWidget {
 }
 
 class _BudgetEditScreenState extends State<BudgetEditScreen> {
-  final _formKey = GlobalKey<FormState>();    //for validation
+  final _formKey = GlobalKey<FormState>(); //for validation
 
   //Controllers
   final TextEditingController _categoryController = TextEditingController();
@@ -44,19 +44,28 @@ class _BudgetEditScreenState extends State<BudgetEditScreen> {
   bool _isDeleting = false;
   bool _isLoading = true;
   String? _errorMessage;
+  bool _hasLoadedArguments = false; // Flag to prevent multiple loads
 
   @override
-  void initState() {  //set default value
+  void initState() {
     super.initState();
-
     _initializeDefaults();
-    _loadArguments();
   }
 
-  void _initializeDefaults(){
-    final defaultCategory = CategoryUtils.allCategories.isNotEmpty
-        ? CategoryUtils.allCategories[0]
-        : "Food";
+  @override
+void didChangeDependencies() {
+  super.didChangeDependencies();
+  if (!_hasLoadedArguments) {
+    _loadArguments();
+    _hasLoadedArguments = true;
+  }
+}
+
+  void _initializeDefaults() {
+    final defaultCategory =
+        CategoryUtils.allCategories.isNotEmpty
+            ? CategoryUtils.allCategories[0]
+            : "Food";
     _categoryController.text = defaultCategory;
     _selectedIcon = CategoryUtils.getCategoryIcon(defaultCategory);
     _selectedColor = CategoryUtils.getCategoryColor(defaultCategory);
@@ -67,54 +76,73 @@ class _BudgetEditScreenState extends State<BudgetEditScreen> {
   }
 
   void _loadArguments() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final arguments = ModalRoute.of(context)?.settings.arguments;
-      if (arguments == null) {
-        setState(() {
-          _errorMessage = 'No budget data provided';
-          _isLoading = false;
-        });
-        return;
-      }
-
-      BudgetModel? budget;
-
-      if (arguments is BudgetModel) {
-        budget = arguments;
-      } else if (arguments is Map<String, dynamic>) {
-        budget = arguments['budget'] as BudgetModel?;
-      }
-
-      if (budget == null) return;  // Early return if no budget
-
-      _status = budget.status.name;
-
-      setState(() {
-        _editingBudget = budget!;
-        _categoryController.text = budget.budgetCategory;
-        _budgetNameController.text = budget.budgetName;
-        _amountController.text = budget.targetAmount.toStringAsFixed(2);
-        _remarkController.text = budget.remark ?? '';
-        _selectedIcon = CategoryUtils.getCategoryIcon(budget.budgetCategory);
-        _selectedColor = CategoryUtils.getCategoryColor(budget.budgetCategory);
-        _startDate = budget.startDate;
-        _endDate = budget.endDate;
-        _selectedDuration = budget.duration;
-        _isRecurring = budget.isRecurring;
-
-        _dueDateController.text = DateFormat('MMM dd, yyyy').format(budget.endDate);
-
-        // Update duration controller if custom
-        if (budget.duration == DurationCategory.custom) {
-          _customDayController.text = budget.customDays?.toString() ??
-              budget.endDate.difference(budget.startDate).inDays.toString();
-        }
-      });
+  final arguments = ModalRoute.of(context)?.settings.arguments;
+  if (arguments == null) {
+    setState(() {
+      _errorMessage = 'No budget data provided';
+      _isLoading = false;
     });
+    return;
   }
+
+  BudgetModel? budget;
+
+  if (arguments is BudgetModel) {
+    budget = arguments;
+  } else if (arguments is Map<String, dynamic>) {
+    budget = arguments['budget'] as BudgetModel?;
+  }
+
+  if (budget == null) {
+    setState(() {
+      _errorMessage = 'No budget data provided';
+      _isLoading = false;
+    });
+    return;
+  }
+
+  setState(() {
+    _status = budget!.status.name;
+
+    _editingBudget = budget;
+    _categoryController.text = budget.budgetCategory;
+    _budgetNameController.text = budget.budgetName;
+    _amountController.text = budget.targetAmount.toStringAsFixed(2);
+    _remarkController.text = budget.remark ?? '';
+    _selectedIcon = CategoryUtils.getCategoryIcon(budget.budgetCategory);
+    _selectedColor = CategoryUtils.getCategoryColor(budget.budgetCategory);
+    _startDate = budget.startDate;
+    _endDate = budget.endDate;
+    _selectedDuration = budget.duration;
+    _isRecurring = budget.isRecurring;
+
+    _dueDateController.text = DateFormat('MMM dd, yyyy').format(budget.endDate);
+
+    if (budget.duration == DurationCategory.custom) {
+      _customDayController.text = budget.customDays?.toString() ??
+          budget.endDate.difference(budget.startDate).inDays.toString();
+    }
+
+    _isLoading = false;
+  });
+}
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return Scaffold(
+        appBar: AppBar(title: Text('Edit Budget')),
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    if (_errorMessage != null) {
+      return Scaffold(
+        appBar: AppBar(title: Text('Edit Budget')),
+        body: Center(child: Text(_errorMessage!)),
+      );
+    }
+
     return Scaffold(
       appBar: _buildAppBar(),
       body: _buildBody(),
@@ -122,7 +150,7 @@ class _BudgetEditScreenState extends State<BudgetEditScreen> {
     );
   }
 
-  AppBar _buildAppBar(){
+  AppBar _buildAppBar() {
     return AppBar(
       title: Text('Edit Budget'),
       actions: [
@@ -144,7 +172,7 @@ class _BudgetEditScreenState extends State<BudgetEditScreen> {
     );
   }
 
-  Widget _buildBody(){
+  Widget _buildBody() {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16.0),
       child: Form(
@@ -182,15 +210,16 @@ class _BudgetEditScreenState extends State<BudgetEditScreen> {
           filled: true,
           fillColor: Colors.purple[50],
           labelText: 'Category',
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(15.0),
-          ),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(15.0)),
         ),
         child: DropdownButtonHideUnderline(
           child: DropdownButton<String>(
-            value: CategoryUtils.allCategories.contains(_categoryController.text)
-                ? _categoryController.text
-                : (CategoryUtils.allCategories.isNotEmpty ? CategoryUtils.allCategories[0] : null),
+            value:
+                CategoryUtils.allCategories.contains(_categoryController.text)
+                    ? _categoryController.text
+                    : (CategoryUtils.allCategories.isNotEmpty
+                        ? CategoryUtils.allCategories[0]
+                        : null),
             isExpanded: true,
             borderRadius: BorderRadius.circular(15.0),
             icon: Icon(Icons.arrow_drop_down),
@@ -199,22 +228,23 @@ class _BudgetEditScreenState extends State<BudgetEditScreen> {
             iconDisabledColor: Colors.grey,
             elevation: 8,
 
-            items: CategoryUtils.allCategories.map((String category) {
-              return DropdownMenuItem<String>(
-                value: category,
-                child: Row(
-                  children: [
-                    Icon(
-                      CategoryUtils.getCategoryIcon(category),
-                      color: CategoryUtils.getCategoryColor(category),
-                      size: 20,
+            items:
+                CategoryUtils.allCategories.map((String category) {
+                  return DropdownMenuItem<String>(
+                    value: category,
+                    child: Row(
+                      children: [
+                        Icon(
+                          CategoryUtils.getCategoryIcon(category),
+                          color: CategoryUtils.getCategoryColor(category),
+                          size: 20,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(category),
+                      ],
                     ),
-                    const SizedBox(width: 8),
-                    Text(category),
-                  ],
-                ),
-              );
-            }).toList(),
+                  );
+                }).toList(),
             onChanged: (String? newValue) {
               if (newValue != null) {
                 setState(() {
@@ -228,10 +258,9 @@ class _BudgetEditScreenState extends State<BudgetEditScreen> {
         ),
       ),
     );
-
   }
 
-  Widget _buildBudgetNameField(){
+  Widget _buildBudgetNameField() {
     return TextFormField(
       controller: _budgetNameController,
       decoration: const InputDecoration(
@@ -275,7 +304,7 @@ class _BudgetEditScreenState extends State<BudgetEditScreen> {
     );
   }
 
-  Widget _buildDueDateField(){
+  Widget _buildDueDateField() {
     return GestureDetector(
       onTap: _selectDate, // Trigger date picker on any tap
       child: AbsorbPointer(
@@ -287,7 +316,9 @@ class _BudgetEditScreenState extends State<BudgetEditScreen> {
             hintText: 'Select a date',
             border: const OutlineInputBorder(),
             prefixIcon: const Icon(Icons.calendar_today), // Optional prefix
-            suffixIcon: const Icon(Icons.arrow_drop_down), // Optional dropdown hint
+            suffixIcon: const Icon(
+              Icons.arrow_drop_down,
+            ), // Optional dropdown hint
           ),
           validator: _dueDateValidator,
         ),
@@ -295,7 +326,7 @@ class _BudgetEditScreenState extends State<BudgetEditScreen> {
     );
   }
 
-  Widget _buildDurationField(){
+  Widget _buildDurationField() {
     return Column(
       children: [
         DropdownButtonHideUnderline(
@@ -307,14 +338,13 @@ class _BudgetEditScreenState extends State<BudgetEditScreen> {
               border: OutlineInputBorder(),
             ),
             isExpanded: true,
-            items: DurationCategory.values.map((duration) {
-              return DropdownMenuItem(
-                value: duration,
-                child: Text(
-                  duration.name.toUpperCase(),
-                ),
-              );
-            }).toList(),
+            items:
+                DurationCategory.values.map((duration) {
+                  return DropdownMenuItem(
+                    value: duration,
+                    child: Text(duration.name.toUpperCase()),
+                  );
+                }).toList(),
             onChanged: (DurationCategory? newValue) {
               if (newValue != null) {
                 setState(() {
@@ -338,7 +368,7 @@ class _BudgetEditScreenState extends State<BudgetEditScreen> {
     );
   }
 
-  Widget _buildCustomDaysField(){
+  Widget _buildCustomDaysField() {
     return Padding(
       padding: const EdgeInsets.only(top: 10),
       child: TextFormField(
@@ -362,16 +392,14 @@ class _BudgetEditScreenState extends State<BudgetEditScreen> {
     );
   }
 
-  Widget _buildRepeatSwitch(){
+  Widget _buildRepeatSwitch() {
     return SwitchListTile(
       contentPadding: EdgeInsets.zero, // Remove default padding
-      title: const Text(
-        'Repeat',
-        style: TextStyle(fontSize: 16),
-      ),
-      subtitle: _isRecurring
-          ? const Text('This budget will repeat automatically')
-          : null,
+      title: const Text('Repeat', style: TextStyle(fontSize: 16)),
+      subtitle:
+          _isRecurring
+              ? const Text('This budget will repeat automatically')
+              : null,
       value: _isRecurring,
       onChanged: (bool value) {
         setState(() {
@@ -384,7 +412,7 @@ class _BudgetEditScreenState extends State<BudgetEditScreen> {
     );
   }
 
-  Widget _buildRemarkField(){
+  Widget _buildRemarkField() {
     return TextFormField(
       controller: _remarkController,
       decoration: const InputDecoration(
@@ -400,9 +428,7 @@ class _BudgetEditScreenState extends State<BudgetEditScreen> {
   Widget _buildPreview() {
     return Card(
       elevation: 4,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
@@ -410,17 +436,13 @@ class _BudgetEditScreenState extends State<BudgetEditScreen> {
           children: [
             const Text(
               'Preview',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
             Row(
               children: [
                 _buildStatusIndicator(_status),
                 Spacer(),
                 _buildRepeatIcon(_isRecurring),
-
               ],
             ),
             const SizedBox(height: 16),
@@ -435,7 +457,7 @@ class _BudgetEditScreenState extends State<BudgetEditScreen> {
     );
   }
 
-  Widget _buildPreviewHeader(){
+  Widget _buildPreviewHeader() {
     final categoryName = _categoryController.text;
     final budgetTitle = _budgetNameController.text;
 
@@ -482,18 +504,17 @@ class _BudgetEditScreenState extends State<BudgetEditScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: statusColor.withOpacity(0.2),
+        color: statusColor.withAlpha((0.2 * 255).round()),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: statusColor.withOpacity(0.5), width: 1),
+        border: Border.all(
+          color: statusColor.withAlpha((0.5 * 255).round()),
+          width: 1,
+        ),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(
-            Icons.circle,
-            color: statusColor,
-            size: 12,
-          ),
+          Icon(Icons.circle, color: statusColor, size: 12),
           const SizedBox(width: 4),
           Text(
             statusText,
@@ -508,15 +529,15 @@ class _BudgetEditScreenState extends State<BudgetEditScreen> {
     );
   }
 
-  Widget _buildRepeatIcon(bool isRepeat){
+  Widget _buildRepeatIcon(bool isRepeat) {
     return Tooltip(
       message: isRepeat ? 'Repeat Budget' : 'One-time Budget',
       child: Container(
         padding: const EdgeInsets.all(4),
         decoration: BoxDecoration(
-          color: isRepeat
-              ? Colors.purple.withOpacity(0.2)
-              : Colors.grey.withOpacity(0.2),
+          color: (isRepeat ? Colors.purple : Colors.grey).withAlpha(
+            (0.2 * 255).round(),
+          ),
           shape: BoxShape.circle,
         ),
         child: Icon(
@@ -535,20 +556,14 @@ class _BudgetEditScreenState extends State<BudgetEditScreen> {
         color: _selectedColor.withAlpha((0.1 * 255).round()),
         borderRadius: BorderRadius.circular(8),
       ),
-      child: Icon(
-        _selectedIcon,
-        color: _selectedColor,
-      ),
+      child: Icon(_selectedIcon, color: _selectedColor),
     );
   }
 
   Widget _buildCategoryName(String name) {
     return Text(
       name.isNotEmpty ? name : 'Category Name',
-      style: const TextStyle(
-        fontSize: 16,
-        fontWeight: FontWeight.bold,
-      ),
+      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
     );
   }
 
@@ -571,7 +586,7 @@ class _BudgetEditScreenState extends State<BudgetEditScreen> {
     );
   }
 
-  Widget _buildBudgetProcess(){
+  Widget _buildBudgetProcess() {
     final amount = double.tryParse(_amountController.text) ?? 0.0;
 
     return Column(
@@ -581,16 +596,9 @@ class _BudgetEditScreenState extends State<BudgetEditScreen> {
           children: [
             Text(
               'RM 0.00 of RM ${amount.toStringAsFixed(2)}',
-              style: TextStyle(
-                color: Colors.grey[600],
-              ),
+              style: TextStyle(color: Colors.grey[600]),
             ),
-            const Text(
-              '0%',
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-              ),
-            ),
+            const Text('0%', style: TextStyle(fontWeight: FontWeight.bold)),
           ],
         ),
         const SizedBox(height: 8),
@@ -605,7 +613,7 @@ class _BudgetEditScreenState extends State<BudgetEditScreen> {
     );
   }
 
-  Widget _buildBudgetDeadline(){
+  Widget _buildBudgetDeadline() {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final endDate = DateTime(_endDate.year, _endDate.month, _endDate.day);
@@ -619,16 +627,9 @@ class _BudgetEditScreenState extends State<BudgetEditScreen> {
           children: [
             Text(
               '$remainDays ${remainDays == 1 ? 'day' : 'days'} remaining',
-              style: TextStyle(
-                color: Colors.grey[600],
-              ),
+              style: TextStyle(color: Colors.grey[600]),
             ),
-            const Text(
-              '0%',
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-              ),
-            ),
+            const Text('0%', style: TextStyle(fontWeight: FontWeight.bold)),
           ],
         ),
         const SizedBox(height: 8),
@@ -643,7 +644,7 @@ class _BudgetEditScreenState extends State<BudgetEditScreen> {
     );
   }
 
-  Widget _buildActionButton(){
+  Widget _buildActionButton() {
     return Padding(
       padding: EdgeInsets.only(left: 30),
       child: Row(
@@ -669,7 +670,8 @@ class _BudgetEditScreenState extends State<BudgetEditScreen> {
   //=====================
   String? _budgetTitleValidator(String? value) {
     if (value == null || value.isEmpty) return 'Please enter a budget title';
-    if (value.length > 20) return 'We only accept 20 characters. Please try again';
+    if (value.length > 20)
+      return 'We only accept 20 characters. Please try again';
     return null;
   }
 
@@ -682,7 +684,8 @@ class _BudgetEditScreenState extends State<BudgetEditScreen> {
   String? _amountValidator(String? value) {
     if (value == null || value.isEmpty) return 'Please enter a budget amount';
     final amount = double.tryParse(value);
-    if (amount == null || amount <= 0) return 'Please enter a valid positive amount';
+    if (amount == null || amount <= 0)
+      return 'Please enter a valid positive amount';
     return null;
   }
 
@@ -725,7 +728,14 @@ class _BudgetEditScreenState extends State<BudgetEditScreen> {
     );
     if (picked != null) {
       setState(() {
-        _endDate = DateTime(picked.year, picked.month, picked.day, 23, 59, 59); // End of day
+        _endDate = DateTime(
+          picked.year,
+          picked.month,
+          picked.day,
+          23,
+          59,
+          59,
+        ); // End of day
         _dueDateController.text = DateFormat('MMM dd, yyyy').format(_endDate);
         _updateDurationFromDates();
       });
@@ -763,23 +773,22 @@ class _BudgetEditScreenState extends State<BudgetEditScreen> {
     final daysDifference = _endDate.difference(_startDate).inDays;
 
     setState(() {
-      if (daysDifference == 0) { // Same day
+      if (daysDifference == 0) {
+        // Same day
         _selectedDuration = DurationCategory.daily;
         _endDate = _startDate.add(Duration(days: 1)); // Force to next day
-      }
-      else if (daysDifference == 1) {
+      } else if (daysDifference == 1) {
         _selectedDuration = DurationCategory.daily;
-      }
-      else if (daysDifference == 7) {
+      } else if (daysDifference == 7) {
         _selectedDuration = DurationCategory.weekly;
-      }
-      else {
+      } else {
         // Check for exact month difference
         final nextMonth = DateTime(
-            _startDate.year, _startDate.month + 1, _startDate.day);
-        if (_endDate
-            .difference(nextMonth)
-            .inDays == 0) {
+          _startDate.year,
+          _startDate.month + 1,
+          _startDate.day,
+        );
+        if (_endDate.difference(nextMonth).inDays == 0) {
           _selectedDuration = DurationCategory.monthly;
         } else {
           _selectedDuration = DurationCategory.custom;
@@ -828,17 +837,21 @@ class _BudgetEditScreenState extends State<BudgetEditScreen> {
         'duration': _selectedDuration.name,
         'remark': _remarkController.text,
         'isRecurring': _isRecurring,
-        'customDay': _selectedDuration == DurationCategory.custom
-            ? int.tryParse(_customDayController.text)
-            : null,
+        'customDay':
+            _selectedDuration == DurationCategory.custom
+                ? int.tryParse(_customDayController.text)
+                : null,
         'endDate': Timestamp.fromDate(_endDate),
         'userId': userId,
         'status': _editingBudget?.status.toString() ?? 'active', //default value
         'nextOccurrence': _calculateNextOccurrence(),
       };
-      await _firestore.collection('budgets').doc(_editingBudget!.budgetId).update(budgetData);
+      await _firestore
+          .collection('budgets')
+          .doc(_editingBudget!.budgetId)
+          .update(budgetData);
 
-      if(!mounted) return;
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Budget updated successfully'),
@@ -856,7 +869,7 @@ class _BudgetEditScreenState extends State<BudgetEditScreen> {
         ),
       );
     } catch (e) {
-      if(!mounted) return;
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Error: ${e.toString()}'),
@@ -873,20 +886,26 @@ class _BudgetEditScreenState extends State<BudgetEditScreen> {
   Future<void> _confirmDeleteBudget() async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Confirm Delete'),
-        content: const Text('Are you sure you want to delete this budget? This action cannot be undone.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
+      builder:
+          (context) => AlertDialog(
+            title: const Text('Confirm Delete'),
+            content: const Text(
+              'Are you sure you want to delete this budget? This action cannot be undone.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text(
+                  'Delete',
+                  style: TextStyle(color: Colors.red),
+                ),
+              ),
+            ],
           ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Delete', style: TextStyle(color: Colors.red)),
-          ),
-        ],
-      ),
     );
 
     if (confirmed == true) {
@@ -917,7 +936,10 @@ class _BudgetEditScreenState extends State<BudgetEditScreen> {
         'userId': userId,
         'status': 'deleted',
       };
-      await _firestore.collection('budgets').doc(_editingBudget!.budgetId).update(budgetData);
+      await _firestore
+          .collection('budgets')
+          .doc(_editingBudget!.budgetId)
+          .update(budgetData);
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -927,7 +949,7 @@ class _BudgetEditScreenState extends State<BudgetEditScreen> {
         ),
       );
       Navigator.pop(context);
-    }  on FirebaseException catch (e) {
+    } on FirebaseException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(

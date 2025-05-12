@@ -88,6 +88,20 @@ class HomeContentState extends State<HomeContent> {
   DateTime _selectedDate = DateTime.now();
   double totalIncome = 0;
   double totalExpenses = 0;
+  Future<Map<String, dynamic>>? _homeDataFuture; // Store the Future
+
+  @override
+  void initState() {
+    super.initState();
+    _refreshData(); // Initialize the Future
+  }
+
+  // Method to refresh data
+  void _refreshData() {
+    setState(() {
+      _homeDataFuture = _fetchHomeData();
+    });
+  }
 
   Future<void> _selectMonth(BuildContext context) async {
     final DateTime? picked = await showMonthPicker(
@@ -100,6 +114,7 @@ class HomeContentState extends State<HomeContent> {
     if (picked != null && picked != _selectedDate) {
       setState(() {
         _selectedDate = picked;
+        _refreshData(); // Refresh data when month changes
       });
     }
   }
@@ -129,7 +144,7 @@ class HomeContentState extends State<HomeContent> {
           ),
           const SizedBox(height: 16),
           FutureBuilder<Map<String, dynamic>>(
-            future: _fetchHomeData(),
+            future: _homeDataFuture, // Use the stored Future
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) {
                 return const Center(child: CircularProgressIndicator());
@@ -352,8 +367,9 @@ class HomeContentState extends State<HomeContent> {
   Widget _buildActionButton(
       BuildContext context, IconData icon, String label, String route, Color color) {
     return InkWell(
-      onTap: () {
-        Navigator.pushNamed(context, route);
+      onTap: () async {
+        await Navigator.pushNamed(context, route);
+        _refreshData(); // Refresh data after returning
       },
       child: Column(
         children: [
@@ -508,8 +524,8 @@ class HomeContentState extends State<HomeContent> {
                   color: progress > 0.8
                       ? Theme.of(context).colorScheme.error // Use theme's error color
                       : Theme.of(context).brightness == Brightness.dark
-                      ? Theme.of(context).colorScheme.onSurface // Light color in dark mode
-                      : Colors.black87,
+                          ? Theme.of(context).colorScheme.onSurface // Light color in dark mode
+                          : Colors.black87,
                 ),
               ),
             ],

@@ -119,7 +119,6 @@ class HelpSupportScreen extends StatelessWidget {
       },
     );
 
-    print('Attempting to launch: $emailUri'); // Debug log
     try {
       if (await canLaunchUrl(emailUri)) {
         await launchUrl(emailUri, mode: LaunchMode.externalApplication);
@@ -129,7 +128,6 @@ class HelpSupportScreen extends StatelessWidget {
         );
       }
     } catch (e) {
-      print('Launch error: $e'); // Detailed error log
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Failed to open email: ${e.toString()}')),
       );

@@ -116,6 +116,8 @@ class FinanceAppState extends State<FinanceApp> {
       themeMode: _themeMode, // Use the dynamic theme mode
       home: AuthenticationWrapper(onThemeChanged: _updateThemeMode),
       routes: {
+        '/home': (context) => AuthGuard(child: HomeScreen()),
+
         // Module 1: Expense & Income Tracking
         '/transactions': (context) => AuthGuard(child: TransactionsScreen()),
         '/expense_list': (context) => AuthGuard(child: ExpenseListScreen()),
@@ -149,12 +151,11 @@ class FinanceAppState extends State<FinanceApp> {
         '/forgot_password': (context) => ForgotPasswordScreen(),
         '/settings': (context) => AuthGuard(child: SettingsScreen(onThemeChanged: _updateThemeMode)),
         '/help_support': (context) => AuthGuard(child: HelpSupportScreen()),
-        '/home': (context) => AuthGuard(child: HomeScreen()),
         '/verify_email': (context) => AuthGuard(
               child: EmailVerificationInstructionsScreen(
                 email: FirebaseAuth.instance.currentUser?.email ?? '',
-                name: '', // You may need to fetch or pass the name
-                phoneNumber: '', // You may need to fetch or pass the phone number
+                name: '',
+                phoneNumber: '',
                 onVerificationComplete: () async {
                   // This will be handled by the screen itself, but you can define additional logic if needed
                 },

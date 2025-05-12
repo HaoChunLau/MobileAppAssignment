@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:mobile_app_assignment/category_utils.dart';
+import 'package:mobile_app_assignment/utils/category_utils.dart';
 import 'package:mobile_app_assignment/models/transaction_model.dart';
 import 'package:mobile_app_assignment/models/budget_model.dart';
 
@@ -50,16 +50,25 @@ class AddExpenseScreenState extends State<AddExpenseScreen> {
       final snapshot = await _firestore
           .collection('budgets')
           .where('userId', isEqualTo: user.uid)
-          .where('status', whereIn: ['active', 'failed']) // Include active and failed budgets
+          .where('status', whereIn: [
+        'active',
+        'failed'
+      ]) // Include active and failed budgets
           .get();
 
-      setState(() {
-        _budgets = snapshot.docs.map((doc) => BudgetModel.fromFirestore(doc)).toList();
-      });
+      if (mounted) {
+        setState(() {
+          _budgets = snapshot.docs
+              .map((doc) => BudgetModel.fromFirestore(doc))
+              .toList();
+        });
+      }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error fetching budgets: ${e.toString()}')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error fetching budgets: ${e.toString()}')),
+        );
+      }
     }
   }
 
@@ -105,7 +114,8 @@ class AddExpenseScreenState extends State<AddExpenseScreen> {
                         border: OutlineInputBorder(),
                         prefixIcon: Icon(Icons.attach_money),
                       ),
-                      keyboardType: TextInputType.numberWithOptions(decimal: true),
+                      keyboardType:
+                          TextInputType.numberWithOptions(decimal: true),
                       validator: (value) {
                         if (value == null || value.isEmpty) {
                           return 'Please enter an amount';
@@ -151,14 +161,16 @@ class AddExpenseScreenState extends State<AddExpenseScreen> {
                         child: DropdownButton<String>(
                           value: _selectedCategory,
                           isExpanded: true,
-                          items: CategoryUtils.expenseCategories.map((String category) {
+                          items: CategoryUtils.expenseCategories
+                              .map((String category) {
                             return DropdownMenuItem<String>(
                               value: category,
                               child: Row(
                                 children: [
                                   Icon(
                                     CategoryUtils.getCategoryIcon(category),
-                                    color: CategoryUtils.getCategoryColor(category),
+                                    color: CategoryUtils.getCategoryColor(
+                                        category),
                                     size: 20,
                                   ),
                                   SizedBox(width: 8),
@@ -202,7 +214,7 @@ class AddExpenseScreenState extends State<AddExpenseScreen> {
                                   '${budget.budgetName} (${budget.budgetCategory})',
                                 ),
                               );
-                            }).toList(),
+                            }),
                           ],
                           onChanged: (String? newValue) {
                             setState(() {
@@ -292,18 +304,26 @@ class AddExpenseScreenState extends State<AddExpenseScreen> {
 
         if (!mounted) return;
 
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Expense added successfully')),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Expense added successfully')),
+          );
+        }
 
-        Navigator.pop(context);
+        if (mounted) {
+          Navigator.pop(context);
+        }
       } catch (e) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error adding expense: ${e.toString()}')),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error adding expense: ${e.toString()}')),
+          );
+        }
       } finally {
-        if (mounted) setState(() => _isLoading = false);
+        if (mounted) {
+          setState(() => _isLoading = false);
+        }
       }
     }
   }
@@ -311,7 +331,8 @@ class AddExpenseScreenState extends State<AddExpenseScreen> {
   Future<void> _updateBudgetCurrentSpent(String? budgetId) async {
     if (budgetId == null) return;
 
-    final budgetDoc = await _firestore.collection('budgets').doc(budgetId).get();
+    final budgetDoc =
+        await _firestore.collection('budgets').doc(budgetId).get();
     if (!budgetDoc.exists) return;
 
     final budget = BudgetModel.fromFirestore(budgetDoc);
@@ -321,7 +342,8 @@ class AddExpenseScreenState extends State<AddExpenseScreen> {
         .where('userId', isEqualTo: _auth.currentUser?.uid)
         .where('budgetId', isEqualTo: budgetId)
         .where('isExpense', isEqualTo: true)
-        .where('date', isGreaterThanOrEqualTo: Timestamp.fromDate(budget.startDate))
+        .where('date',
+            isGreaterThanOrEqualTo: Timestamp.fromDate(budget.startDate))
         .where('date', isLessThanOrEqualTo: Timestamp.fromDate(budget.endDate))
         .get();
 

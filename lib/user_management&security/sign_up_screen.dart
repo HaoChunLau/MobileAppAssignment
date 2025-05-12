@@ -1,7 +1,9 @@
+import 'package:email_validator/email_validator.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:mobile_app_assignment/models/user_model.dart';
+import 'package:mobile_app_assignment/user_management&security/email_verification_code_screen.dart';
 
 class SignUpScreen extends StatefulWidget {
   final Function(bool) onThemeChanged;
@@ -56,29 +58,46 @@ class SignUpScreenState extends State<SignUpScreen> {
     setState(() => _isLoading = true);
 
     try {
-      // 1. Create user in Firebase Auth
-      final UserCredential userCredential =
-          await _auth.createUserWithEmailAndPassword(
-        email: _emailController.text,
+      // Check if email is already registered
+      final signInMethods = await _auth.fetchSignInMethodsForEmail(_emailController.text.trim());
+      if (signInMethods.isNotEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('This email is already registered. Please use a different email or log in.')),
+        );
+        setState(() => _isLoading = false);
+        return;
+      }
+
+      // Create user with email and password directly
+      final UserCredential userCredential = await _auth.createUserWithEmailAndPassword(
+        email: _emailController.text.trim(),
         password: _passwordController.text,
       );
 
-      // 2. Save additional data to Firestore
-      final UserModel user = UserModel(
-        id: userCredential.user!.uid,
-        email: _emailController.text,
-        name: _nameController.text,
-        phoneNumber: _phoneController.text,
-        currency: 'MYR (RM)',
-        createdAt: DateTime.now(),
+      // Send verification email using Firebase Authentication's built-in method
+      await userCredential.user!.sendEmailVerification();
+
+      // Show success message
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Account created! Please check your email for verification link.'),
+          backgroundColor: Colors.green,
+        ),
       );
 
-      await _firestore.collection('users').doc(user.id).set(user.toMap());
-
-      if (!mounted) return;
-
-      // 3. Navigate to home screen
-      Navigator.pushReplacementNamed(context, '/');
+      // Navigate to verification instructions screen
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (context) => EmailVerificationInstructionsScreen(
+            email: _emailController.text.trim(),
+            name: _nameController.text.trim(),
+            phoneNumber: _phoneController.text.trim(),
+            onVerificationComplete: _onVerificationComplete,
+          ),
+        ),
+      );
     } on FirebaseAuthException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -96,14 +115,38 @@ class SignUpScreenState extends State<SignUpScreen> {
     }
   }
 
+  // This function will be called when email verification is complete
+  Future<void> _onVerificationComplete() async {
+    try {
+      // Get the current user
+      final User? user = _auth.currentUser;
+
+      if (user != null) {
+        // Now that the user is verified, save their data to Firestore
+        final UserModel userModel = UserModel(
+          id: user.uid,
+          email: user.email ?? _emailController.text.trim(),
+          name: _nameController.text.trim(),
+          phoneNumber: _phoneController.text.trim(),
+          currency: 'MYR (RM)',
+          createdAt: DateTime.now(),
+          emailVerified: true,
+        );
+
+        await _firestore.collection('users').doc(user.uid).set(userModel.toMap());
+      }
+    } catch (e) {
+      print('Error saving user data: $e');
+    }
+  }
+
   bool _validateInputs() {
     if (_nameController.text.trim().isEmpty) {
       _showError('Please enter your full name');
       return false;
     }
 
-    final emailRegex = RegExp(r'^[^@]+@[^@]+\.[^@]+$');
-    if (!emailRegex.hasMatch(_emailController.text.trim())) {
+    if (_emailController.text.trim().isEmpty || !EmailValidator.validate(_emailController.text.trim())) {
       _showError('Please enter a valid email address');
       return false;
     }

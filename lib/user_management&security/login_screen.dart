@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-// import 'package:mobile_app_assignment/models/user_model.dart';
+import 'package:mobile_app_assignment/main.dart';
 
 class LoginScreen extends StatefulWidget {
   final Function(bool) onThemeChanged;
@@ -38,30 +38,31 @@ class LoginScreenState extends State<LoginScreen> {
     setState(() => _isLoading = true);
 
     try {
-      // 1. Sign in with Firebase Auth
-      final UserCredential userCredential =
-          await _auth.signInWithEmailAndPassword(
-        email: _emailController.text,
+      // Sign in with Firebase Auth
+      final UserCredential userCredential = await _auth.signInWithEmailAndPassword(
+        email: _emailController.text.trim(),
         password: _passwordController.text,
       );
 
-      // 2. Fetch user data from Firestore
-      final DocumentSnapshot userDoc = await _firestore
-          .collection('users')
-          .doc(userCredential.user!.uid)
-          .get();
+      // Fetch user data from Firestore
+      final DocumentSnapshot userDoc =
+      await _firestore.collection('users').doc(userCredential.user!.uid).get();
 
       if (!userDoc.exists) {
         throw Exception('User data not found in Firestore');
       }
 
-      // 3. Convert to UserModel (not used further here)
-      // final UserModel user = UserModel.fromFirestore(userDoc);
-
+      // Check email verification
+      final isVerified = await AuthService().requireEmailVerification();
       if (!mounted) return;
 
-      // 4. Navigate to home screen
-      Navigator.pushReplacementNamed(context, '/');
+      if (isVerified) {
+        // Navigate to home screen
+        Navigator.pushReplacementNamed(context, '/home');
+      } else {
+        // Navigate to verify email screen
+        Navigator.pushReplacementNamed(context, '/verify_email');
+      }
     } on FirebaseAuthException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

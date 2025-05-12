@@ -1,7 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:fl_chart/fl_chart.dart';
-import 'package:mobile_app_assignment/category_utils.dart';
+import 'package:mobile_app_assignment/utils/category_utils.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:mobile_app_assignment/models/budget_model.dart';
@@ -48,7 +48,6 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
   // ========== INITIALIZATION =========
   @override
   void initState() {
-    //set default value
     super.initState();
 
     _focusedDay = DateTime.now();
@@ -122,9 +121,6 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
     'expenses': true,
   };
 
-  // ==========================
-  //      BUSINESS LOGIC
-  // ==========================
   void _handleMenuSelection(String value) {
     switch (value) {
       case 'editing':
@@ -428,9 +424,6 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
     );
   }
 
-  // ==========================
-  //        UI ELEMENTS
-  // ==========================
   @override
   Widget build(BuildContext context) {
     return Scaffold(

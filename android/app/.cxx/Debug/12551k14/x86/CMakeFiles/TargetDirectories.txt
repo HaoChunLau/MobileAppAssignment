@@ -1,0 +1,2 @@
+C:/Users/haoch/AndroidStudioProjects/mobile_app_assignment/android/app/.cxx/Debug/12551k14/x86/CMakeFiles/edit_cache.dir
+C:/Users/haoch/AndroidStudioProjects/mobile_app_assignment/android/app/.cxx/Debug/12551k14/x86/CMakeFiles/rebuild_cache.dir

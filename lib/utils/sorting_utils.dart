@@ -1,7 +1,8 @@
 // lib/utils/sorting_utils.dart
 import 'package:flutter/material.dart';
-import 'package:mobile_app_assignment/category_utils.dart';
+import 'package:mobile_app_assignment/utils/category_utils.dart';
 import 'package:mobile_app_assignment/models/budget_model.dart';
+import 'package:mobile_app_assignment/models/savings_goal_model.dart';
 
 enum SortCategory {
   name,
@@ -67,7 +68,7 @@ class SortingUtils {
         return Icons.category;
       case SortCategory.progress:
         return Icons.trending_up;
-        case SortCategory.remainDays:
+      case SortCategory.remainDays:
         return Icons.timer_sharp;
     }
   }
@@ -106,6 +107,44 @@ class SortingUtils {
         case SortCategory.remainDays:
           final remainingDaysA = a.endDate.difference(today).inDays;
           final remainingDaysB = b.endDate.difference(today).inDays;
+          return remainingDaysA.compareTo(remainingDaysB) * directionMultiplier;
+      }
+    });
+  }
+
+  static List<SavingsGoalModel> sortSavings({
+    required List<SavingsGoalModel> savings,
+    required SortingOptions options,
+    DateTime? currentDate,
+  }) {
+    final directionMultiplier = options.direction == SortDirection.ascending ? 1 : -1;
+    final today = currentDate ?? DateTime.now();
+
+    return List<SavingsGoalModel>.from(savings)..sort((a, b) {
+      switch (options.category) {
+        case SortCategory.name:
+          return a.title.compareTo(b.title) * directionMultiplier;
+        case SortCategory.amount:
+          return a.currentSaved.compareTo(b.currentSaved) * directionMultiplier;
+        case SortCategory.date:
+          return a.startDate.compareTo(b.startDate) * directionMultiplier;
+        case SortCategory.category:
+        // Sort by predefined category order
+          final indexA = SavingCategoryUtils.categories.indexOf(a.goalCategory);
+          final indexB = SavingCategoryUtils.categories.indexOf(b.goalCategory);
+          if (indexA == -1 || indexB == -1) {
+            return (indexA == -1 ? 1 : -1) * directionMultiplier;
+          }
+          return indexA.compareTo(indexB) * directionMultiplier;
+        case SortCategory.progress:
+          final savedA = a.currentSaved;
+          final savedB = b.currentSaved;
+          final progressA = a.targetAmount > 0 ? savedA / a.targetAmount : 0;
+          final progressB = b.targetAmount > 0 ? savedB / b.targetAmount : 0;
+          return progressA.compareTo(progressB) * directionMultiplier;
+        case SortCategory.remainDays:
+          final remainingDaysA = a.targetDate.difference(today).inDays;
+          final remainingDaysB = b.targetDate.difference(today).inDays;
           return remainingDaysA.compareTo(remainingDaysB) * directionMultiplier;
       }
     });

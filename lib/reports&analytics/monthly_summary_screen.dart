@@ -3,8 +3,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 import 'package:mobile_app_assignment/models/transaction_model.dart';
-import 'package:mobile_app_assignment/category_utils.dart';
+import 'package:mobile_app_assignment/utils/category_utils.dart';
 import 'package:month_picker_dialog/month_picker_dialog.dart';
+import 'package:mobile_app_assignment/models/budget_model.dart';
 
 class MonthlySummaryScreen extends StatefulWidget {
   const MonthlySummaryScreen({super.key});
@@ -21,6 +22,7 @@ class MonthlySummaryScreenState extends State<MonthlySummaryScreen> {
   double _income = 0.0;
   double _expense = 0.0;
   double _savings = 0.0;
+  double _budget = 0.0; // New state variable for budget
   Map<String, double> _categoryBreakdown = {};
   List<Map<String, dynamic>> _insights = [];
   String _errorMessage = '';
@@ -50,7 +52,8 @@ class MonthlySummaryScreenState extends State<MonthlySummaryScreen> {
     final lastDayOfMonth = DateTime(_selectedMonth.year, _selectedMonth.month + 1, 0);
 
     try {
-      final querySnapshot = await _firestore
+      // Fetch transactions
+      final transactionSnapshot = await _firestore
           .collection('transactions')
           .where('userId', isEqualTo: userId)
           .where('date',
@@ -65,7 +68,7 @@ class MonthlySummaryScreenState extends State<MonthlySummaryScreen> {
         for (var category in CategoryUtils.expenseCategories) category: 0.0
       };
 
-      for (var doc in querySnapshot.docs) {
+      for (var doc in transactionSnapshot.docs) {
         final transaction = TransactionModel.fromFirestore(doc);
         if (transaction.isExpense) {
           totalExpense += transaction.amount;
@@ -73,7 +76,7 @@ class MonthlySummaryScreenState extends State<MonthlySummaryScreen> {
             categoryTotals[transaction.category] =
                 categoryTotals[transaction.category]! + transaction.amount;
           } else {
-            categoryTotals['Other'] = categoryTotals['Other']! + transaction.amount;
+            categoryTotals['Other'] = (categoryTotals['Other'] ?? 0.0) + transaction.amount;
           }
         } else {
           totalIncome += transaction.amount;
@@ -114,10 +117,29 @@ class MonthlySummaryScreenState extends State<MonthlySummaryScreen> {
         });
       }
 
+      // Fetch budgets
+      final budgetSnapshot = await _firestore
+          .collection('budgets')
+          .where('userId', isEqualTo: userId)
+          .where('status', isEqualTo: 'active')
+          .get();
+
+      double totalBudget = 0.0;
+      for (var doc in budgetSnapshot.docs) {
+        final budget = BudgetModel.fromFirestore(doc);
+        final budgetStart = budget.startDate;
+        final budgetEnd = budget.endDate;
+        if ((budgetStart.isBefore(lastDayOfMonth) || budgetStart.isAtSameMomentAs(lastDayOfMonth)) &&
+            (budgetEnd.isAfter(firstDayOfMonth) || budgetEnd.isAtSameMomentAs(firstDayOfMonth))) {
+          totalBudget += budget.targetAmount;
+        }
+      }
+
       setState(() {
         _income = totalIncome;
         _expense = totalExpense;
         _savings = totalIncome - totalExpense;
+        _budget = totalBudget; // Store the fetched budget
         _categoryBreakdown = breakdown;
         _insights = insights;
         _isLoading = false;
@@ -311,10 +333,10 @@ class MonthlySummaryScreenState extends State<MonthlySummaryScreen> {
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
                               _buildSummaryItem(
-                                  'Budget', 'RM 2000.00', Colors.purple),
+                                  'Budget', 'RM ${_budget.toStringAsFixed(2)}', Colors.purple),
                               _buildSummaryItem(
                                   'vs Budget',
-                                  '${((_expense / 2000) * 100).toStringAsFixed(0)}% of budget',
+                                  '${_budget > 0 ? ((_expense / _budget) * 100).toStringAsFixed(0) : 0}% of budget',
                                   Colors.orange),
                             ],
                           ),

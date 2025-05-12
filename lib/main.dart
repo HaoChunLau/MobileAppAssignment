@@ -3,12 +3,9 @@ import 'package:mobile_app_assignment/budgeting&goal_management/budget_detail_sc
 import 'package:mobile_app_assignment/budgeting&goal_management/budget_overview_screen.dart';
 import 'package:mobile_app_assignment/budgeting&goal_management/budget_add_screen.dart';
 import 'package:mobile_app_assignment/budgeting&goal_management/budget_edit_screen.dart';
-import 'package:mobile_app_assignment/budgeting&goal_management/budget_history_screen.dart';
 import 'package:mobile_app_assignment/budgeting&goal_management/savings_goal_screen.dart';
 import 'package:mobile_app_assignment/budgeting&goal_management/savings_progress_screen.dart';
 import 'package:mobile_app_assignment/budgeting&goal_management/savings_goal_add_screen.dart';
-import 'package:mobile_app_assignment/budgeting&goal_management/savings_goal_edit_screen.dart';
-import 'package:mobile_app_assignment/budgeting&goal_management/savings_goal_history_screen.dart';
 import 'package:mobile_app_assignment/expense&income_tracking/transactions_screen.dart';
 import 'package:mobile_app_assignment/expense&income_tracking/add_expense_screen.dart';
 import 'package:mobile_app_assignment/expense&income_tracking/add_income_screen.dart';
@@ -30,11 +27,54 @@ import 'package:mobile_app_assignment/user_management&security/sign_up_screen.da
 import 'package:mobile_app_assignment/home_screen.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
   runApp(FinanceApp());
+}
+
+class AuthService {
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+
+  // Set up a listener to update the user's verification status in Firestore
+  void setupEmailVerificationListener() {
+    _auth.authStateChanges().listen((User? user) async {
+      if (user != null) {
+        // Reload user to get latest emailVerified status
+        await user.reload();
+        if (user.emailVerified) {
+          await _firestore.collection('users').doc(user.uid).update({
+            'emailVerified': true,
+          });
+        }
+      }
+    });
+  }
+
+  // Call this after successful login to check if email is verified
+  Future<bool> checkEmailVerification() async {
+    await _auth.currentUser?.reload();
+    return _auth.currentUser?.emailVerified ?? false;
+  }
+
+  // This method can be used in your login flow to ensure only verified emails can access the app
+  Future<bool> requireEmailVerification() async {
+    final User? user = _auth.currentUser;
+    if (user == null) {
+      return false;
+    }
+    await user.reload();
+    return user.emailVerified;
+  }
+}
+
+// Initialize AuthService
+void initializeAuthService() {
+  final authService = AuthService();
+  authService.setupEmailVerificationListener();
 }
 
 class FinanceApp extends StatefulWidget {
@@ -88,12 +128,9 @@ class FinanceAppState extends State<FinanceApp> {
         '/budget_add': (context) => AuthGuard(child: BudgetAddScreen()),
         '/budget_edit': (context) => AuthGuard(child: BudgetEditScreen()),
         '/budget_detail': (context) => AuthGuard(child: BudgetDetailScreen()),
-        '/budget_history': (context) => AuthGuard(child: BudgetHistoryScreen()),
         '/savings_goal': (context) => AuthGuard(child: SavingsGoalScreen()),
         '/savings_progress': (context) => AuthGuard(child: SavingsProgressScreen()),
         '/savings_add': (context) => AuthGuard(child: SavingsGoalAddScreen()),
-        '/savings_edit': (context) => AuthGuard(child: SavingsGoalEditScreen()),
-        '/savings_history': (context) => AuthGuard(child: SavingsGoalHistoryScreen()),
 
         // Module 3: Reports & Analytics
         '/reports_overview': (context) => AuthGuard(child: ReportsOverviewScreen()),
@@ -126,11 +163,27 @@ class AuthenticationWrapper extends StatelessWidget {
     return StreamBuilder<User?>(
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, snapshot) {
-        // If the snapshot has user data, then they're already signed in
-        if (snapshot.hasData && snapshot.data != null) {
-          return HomeScreen();
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Scaffold(body: Center(child: CircularProgressIndicator()));
         }
-        // Otherwise, they're not signed in
+        if (snapshot.hasData && snapshot.data != null) {
+          return FutureBuilder<bool>(
+            future: AuthService().requireEmailVerification(),
+            builder: (context, verificationSnapshot) {
+              if (verificationSnapshot.connectionState == ConnectionState.waiting) {
+                return const Scaffold(body: Center(child: CircularProgressIndicator()));
+              }
+              if (verificationSnapshot.hasData && verificationSnapshot.data == true) {
+                return HomeScreen();
+              } else {
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  Navigator.of(context).pushReplacementNamed('/verify_email');
+                });
+                return const Scaffold(body: Center(child: CircularProgressIndicator()));
+              }
+            },
+          );
+        }
         return LoginScreen(onThemeChanged: onThemeChanged);
       },
     );
@@ -149,18 +202,30 @@ class AuthGuard extends StatelessWidget {
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return Scaffold(body: Center(child: CircularProgressIndicator()));
-        } else if (snapshot.hasData && snapshot.data != null) {
-          return child;
+          return const Scaffold(body: Center(child: CircularProgressIndicator()));
+        }
+        if (snapshot.hasData && snapshot.data != null) {
+          return FutureBuilder<bool>(
+            future: AuthService().requireEmailVerification(),
+            builder: (context, verificationSnapshot) {
+              if (verificationSnapshot.connectionState == ConnectionState.waiting) {
+                return const Scaffold(body: Center(child: CircularProgressIndicator()));
+              }
+              if (verificationSnapshot.hasData && verificationSnapshot.data == true) {
+                return child;
+              } else {
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  Navigator.of(context).pushReplacementNamed('/verify_email');
+                });
+                return const Scaffold(body: Center(child: CircularProgressIndicator()));
+              }
+            },
+          );
         } else {
-          // If not logged in, redirect to login page
-          // Use a microtask to avoid calling Navigator during build
           WidgetsBinding.instance.addPostFrameCallback((_) {
             Navigator.of(context).pushReplacementNamed('/login');
           });
-          
-          // Return loading indicator to show while navigation is happening
-          return Scaffold(body: Center(child: CircularProgressIndicator()));
+          return const Scaffold(body: Center(child: CircularProgressIndicator()));
         }
       },
     );

@@ -5,11 +5,11 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
-import 'package:mobile_app_assignment/category_utils.dart';
+import 'package:mobile_app_assignment/utils/category_utils.dart';
 import 'package:mobile_app_assignment/models/budget_model.dart';
 import 'package:mobile_app_assignment/models/transaction_model.dart';
 import 'package:month_picker_dialog/month_picker_dialog.dart';
-import 'package:mobile_app_assignment/sorting_utils.dart';
+import 'package:mobile_app_assignment/utils/sorting_utils.dart';
 
 class BudgetOverviewScreen extends StatefulWidget {
   const BudgetOverviewScreen({super.key});
@@ -53,6 +53,8 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
   String? _startDateError;
   String? _endDateError;
 
+  bool _isLoading = true; // New manual loading state
+
   @override
   void initState() {
     super.initState();
@@ -63,9 +65,8 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
       });
     });
 
-    _updateAllBudgetsCurrentSpent().then((_) {
-      if (mounted) setState(() {});
-    });
+    // Initial fetch without setState, rely on StreamBuilder
+    _updateAllBudgetsCurrentSpent();
 
     Timer.periodic(Duration(hours: 1), (timer) {
       _checkAndUpdateAllBudgets();
@@ -84,7 +85,28 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
     super.dispose();
   }
 
-  void _checkAndUpdateAllBudgets() async {
+  Future<void> _updateAllBudgetsCurrentSpent() async {
+    final budgets = await _firestore
+        .collection('budgets')
+        .where('userId', isEqualTo: _auth.currentUser?.uid)
+        .get();
+
+    final batch = _firestore.batch();
+
+    for (var doc in budgets.docs) {
+      final budget = BudgetModel.fromFirestore(doc);
+      await updateCurrentSpent(budget);
+      batch.update(doc.reference, {
+        'currentSpent': budget.currentSpent,
+        'lastUpdated': FieldValue.serverTimestamp(),
+      });
+    }
+
+    await batch.commit();
+    // No setState here; StreamBuilder will handle updates
+  }
+
+  Future<void> _checkAndUpdateAllBudgets() async {
     final budgets = await _firestore
         .collection('budgets')
         .where('userId', isEqualTo: _auth.currentUser?.uid)
@@ -111,6 +133,72 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
     await batch.commit();
   }
 
+  Future<void> _handleRecurringBudgets() async {
+    final now = DateTime.now();
+    final budgets = await _firestore
+        .collection('budgets')
+        .where('userId', isEqualTo: _auth.currentUser?.uid)
+        .where('isRecurring', isEqualTo: true)
+        .where('endDate', isLessThanOrEqualTo: Timestamp.fromDate(now))
+        .get();
+
+    final batch = _firestore.batch();
+
+    for (var doc in budgets.docs) {
+      final budget = BudgetModel.fromFirestore(doc);
+
+      final duration = budget.endDate.difference(budget.startDate);
+      final newStartDate = budget.endDate.add(Duration(days: 1));
+      final newEndDate = newStartDate.add(duration);
+
+      final newBudget = {
+        'budgetId': _firestore.collection('budgets').doc().id,
+        'budgetCategory': budget.budgetCategory,
+        'budgetName': budget.budgetName,
+        'targetAmount': budget.targetAmount,
+        'remark': budget.remark,
+        'duration': budget.duration.name, // Use enum name
+        'customDays': budget.customDays,
+        'startDate': Timestamp.fromDate(newStartDate),
+        'endDate': Timestamp.fromDate(newEndDate),
+        'userId': budget.userId,
+        'status': 'active',
+        'isRecurring': budget.isRecurring,
+        'nextOccurrence': Timestamp.fromDate(_calculateNextOccurrence(
+            budget.duration, newEndDate,
+            customDay: budget.customDays)),
+      };
+
+      batch.set(
+          _firestore.collection('budgets').doc(newBudget['budgetId'] as String),
+          newBudget);
+    }
+
+    await batch.commit();
+  }
+
+  DateTime _calculateNextOccurrence(DurationCategory duration, DateTime endDate,
+      {int? customDay}) {
+    switch (duration) {
+      case DurationCategory.daily:
+        return endDate.add(const Duration(days: 1));
+      case DurationCategory.weekly:
+        return endDate.add(const Duration(days: 7));
+      case DurationCategory.monthly:
+        final nextMonth = endDate.month + 1;
+        final nextYear = endDate.year + (nextMonth > 12 ? 1 : 0);
+        final adjustedMonth = nextMonth > 12 ? nextMonth - 12 : nextMonth;
+        return DateTime(
+          nextYear,
+          adjustedMonth,
+          min(endDate.day, DateUtils.getDaysInMonth(nextYear, adjustedMonth)),
+        );
+      case DurationCategory.custom:
+        final days = customDay ?? 0;
+        return endDate.add(Duration(days: days));
+    }
+  }
+
   void _handleMenuSelection(String value) {
     switch (value) {
       case 'search':
@@ -127,9 +215,6 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
         break;
       case 'filter':
         _showFilterDialog(context);
-        break;
-      case 'history':
-        _navigateToBudgetHistory();
         break;
     }
   }
@@ -228,10 +313,14 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
                         _maxAmount = _maxAmountController.text.isEmpty
                             ? double.infinity
                             : double.parse(_maxAmountController.text);
-                        _filterStartDate =
-                            DateTime.tryParse(_startDateController.text);
-                        _filterEndDate =
-                            DateTime.tryParse(_endDateController.text);
+                        _filterStartDate = _startDateController.text.isNotEmpty
+                            ? DateFormat('dd/MM/yyyy')
+                                .parse(_startDateController.text)
+                            : null;
+                        _filterEndDate = _endDateController.text.isNotEmpty
+                            ? DateFormat('dd/MM/yyyy')
+                                .parse(_endDateController.text)
+                            : null;
                         _isFilterActive = dialogSelectedCategories.isNotEmpty ||
                             _minAmount > 0 ||
                             _maxAmount < double.infinity ||
@@ -330,25 +419,6 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
     }).toList();
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (didPop, result) {
-        if (!didPop) {
-          Navigator.pushReplacementNamed(context, '/home');
-        }
-      },
-      child: Scaffold(
-        appBar: _buildAppBar(),
-        body: _buildBody(),
-        floatingActionButton: _buildCreateBudgetButton(),
-        floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
-        bottomNavigationBar: _buildBottomNavigationBar(),
-      ),
-    );
-  }
-
   Stream<QuerySnapshot> getBudgetStream(DateTime selectedDate,
       {List<String>? statuses}) {
     var query = _firestore
@@ -392,6 +462,25 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
     return query.snapshots();
   }
 
+  @override
+  Widget build(BuildContext context) {
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop) {
+          Navigator.pushReplacementNamed(context, '/home');
+        }
+      },
+      child: Scaffold(
+        appBar: _buildAppBar(),
+        body: _buildBody(),
+        floatingActionButton: _buildCreateBudgetButton(),
+        floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+        bottomNavigationBar: _buildBottomNavigationBar(),
+      ),
+    );
+  }
+
   AppBar _buildAppBar() {
     return AppBar(
       title: Text('Budget - ${DateFormat('MMM yyyy').format(_selectedDate)}'),
@@ -429,13 +518,6 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
                 child: ListTile(
                   leading: Icon(Icons.filter_alt_rounded, size: 20),
                   title: Text('Filter'),
-                  dense: true,
-                )),
-            PopupMenuItem<String>(
-                value: 'history',
-                child: ListTile(
-                  leading: Icon(Icons.history, size: 20),
-                  title: Text('View History'),
                   dense: true,
                 )),
           ],
@@ -487,7 +569,7 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
   }
 
   Widget _buildAllBudgetsTab() {
-    List<String> _selectedStatuses = [
+    List<String> selectedStatuses = [
       'active',
       'completed',
       'failed',
@@ -495,7 +577,7 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
       'deleted'
     ];
     return StreamBuilder<QuerySnapshot>(
-      stream: getBudgetStream(_selectedDate, statuses: _selectedStatuses),
+      stream: getBudgetStream(_selectedDate, statuses: selectedStatuses),
       builder: (context, snapshot) {
         List<BudgetModel> budgets = (snapshot.data?.docs ?? [])
             .map((doc) {
@@ -522,9 +604,9 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
   }
 
   Widget _buildActiveBudgetsTab() {
-    List<String> _selectedStatuses = ['active'];
+    List<String> selectedStatuses = ['active'];
     return StreamBuilder<QuerySnapshot>(
-      stream: getBudgetStream(_selectedDate, statuses: _selectedStatuses),
+      stream: getBudgetStream(_selectedDate, statuses: selectedStatuses),
       builder: (context, snapshot) {
         List<BudgetModel> activeBudgets = (snapshot.data?.docs ?? [])
             .map((doc) => BudgetModel.fromFirestore(doc))
@@ -547,9 +629,9 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
   }
 
   Widget _buildCompletedBudgetsTab() {
-    List<String> _selectedStatuses = ['completed'];
+    List<String> selectedStatuses = ['completed'];
     return StreamBuilder<QuerySnapshot>(
-      stream: getBudgetStream(_selectedDate, statuses: _selectedStatuses),
+      stream: getBudgetStream(_selectedDate, statuses: selectedStatuses),
       builder: (context, snapshot) {
         List<BudgetModel> completedBudgets = (snapshot.data?.docs ?? [])
             .map((doc) => BudgetModel.fromFirestore(doc))
@@ -572,9 +654,9 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
   }
 
   Widget _buildFailedBudgetsTab() {
-    List<String> _selectedStatuses = ['failed'];
+    List<String> selectedStatuses = ['failed'];
     return StreamBuilder<QuerySnapshot>(
-      stream: getBudgetStream(_selectedDate, statuses: _selectedStatuses),
+      stream: getBudgetStream(_selectedDate, statuses: selectedStatuses),
       builder: (context, snapshot) {
         List<BudgetModel> failedBudgets = (snapshot.data?.docs ?? [])
             .map((doc) => BudgetModel.fromFirestore(doc))
@@ -597,9 +679,9 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
   }
 
   Widget _buildStoppedBudgetsTab() {
-    List<String> _selectedStatuses = ['stopped'];
+    List<String> selectedStatuses = ['stopped'];
     return StreamBuilder<QuerySnapshot>(
-      stream: getBudgetStream(_selectedDate, statuses: _selectedStatuses),
+      stream: getBudgetStream(_selectedDate, statuses: selectedStatuses),
       builder: (context, snapshot) {
         List<BudgetModel> stoppedBudgets = (snapshot.data?.docs ?? [])
             .map((doc) => BudgetModel.fromFirestore(doc))
@@ -622,9 +704,9 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
   }
 
   Widget _buildDeletedBudgetsTab() {
-    List<String> _selectedStatuses = ['deleted'];
+    List<String> selectedStatuses = ['deleted'];
     return StreamBuilder<QuerySnapshot>(
-      stream: getBudgetStream(_selectedDate, statuses: _selectedStatuses),
+      stream: getBudgetStream(_selectedDate, statuses: selectedStatuses),
       builder: (context, snapshot) {
         List<BudgetModel> deletedBudgets = (snapshot.data?.docs ?? [])
             .map((doc) => BudgetModel.fromFirestore(doc))
@@ -646,513 +728,120 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
     );
   }
 
-  Widget _buildSortDialogContent(BuildContext context) {
-    SortCategory currentCategory = _sortingOptions.category;
-    SortDirection currentDirection = _sortingOptions.direction;
+  Widget _buildBudgetContent(List<BudgetModel> budgets) {
+    String statusTab = '';
+    return StreamBuilder<QuerySnapshot>(
+      stream: getTransactionStream(
+        startDate: DateTime(_selectedDate.year, _selectedDate.month, 1),
+        endDate: DateTime(
+            _selectedDate.year, _selectedDate.month + 1, 0, 23, 59, 59),
+      ),
+      builder: (context, transactionSnapshot) {
+        // Show loading only for initial fetch
+        if (_isLoading &&
+            transactionSnapshot.connectionState == ConnectionState.waiting) {
+          return _buildLoadingState();
+        }
 
-    return StatefulBuilder(
-      builder: (context, setState) {
-        return AlertDialog(
-          title: const Text('Sort By'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
+        // Turn off loading after first snapshot
+        if (_isLoading &&
+            transactionSnapshot.connectionState != ConnectionState.waiting) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              setState(() {
+                _isLoading = false;
+              });
+            }
+          });
+        }
+
+        // Handle error state
+        if (transactionSnapshot.hasError) {
+          return _buildErrorState(transactionSnapshot.error);
+        }
+
+        // Handle no data (null or empty snapshot)
+        if (!transactionSnapshot.hasData || transactionSnapshot.data == null) {
+          return _buildEmptyState('Transactions');
+        }
+
+        // Handle empty budgets case
+        if (budgets.isEmpty) {
+          switch (_activeTabIndex) {
+            case 0:
+              statusTab = 'All';
+              break;
+            case 1:
+              statusTab = 'Active';
+              break;
+            case 2:
+              statusTab = 'Completed';
+              break;
+            case 3:
+              statusTab = 'Failed';
+              break;
+            case 4:
+              statusTab = 'Stopped';
+              break;
+            case 5:
+              statusTab = 'Deleted';
+              break;
+          }
+          return _buildEmptyState(statusTab);
+        }
+
+        // Process transactions
+        final allTransactions = transactionSnapshot.data!.docs
+            .map((doc) => TransactionModel.fromFirestore(doc))
+            .toList();
+
+        // Calculate totalSpent for the monthly overview
+        final totalSpent =
+            allTransactions.fold(0.0, (total, txn) => total + txn.amount);
+
+        // Filter transactions for budget-specific spending
+        final expenses = allTransactions
+            .where((txn) =>
+                budgets.any((budget) => budget.budgetId == txn.budgetId) &&
+                txn.date.isAfter((txn.budgetId != null
+                        ? budgets
+                            .firstWhere((b) => b.budgetId == txn.budgetId)
+                            .startDate
+                        : DateTime.now())
+                    .subtract(const Duration(seconds: 1))) &&
+                txn.date.isBefore((txn.budgetId != null
+                        ? budgets
+                            .firstWhere((b) => b.budgetId == txn.budgetId)
+                            .endDate
+                        : DateTime.now())
+                    .add(const Duration(seconds: 1))))
+            .toList();
+
+        final spendingData = _calculateSpendingData(expenses, budgets);
+
+        return SingleChildScrollView(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              ...SortCategory.values.map((category) {
-                return RadioListTile<SortCategory>(
-                  title: Row(
-                    children: [
-                      Icon(SortingUtils.getSortCategoryIcon(category)),
-                      const SizedBox(width: 8),
-                      Text(SortingUtils.getSortCategoryName(category)),
-                    ],
-                  ),
-                  value: category,
-                  groupValue: currentCategory,
-                  onChanged: (SortCategory? value) {
-                    setState(() => currentCategory = value!);
-                  },
-                );
-              }),
-              const Divider(),
-              RadioListTile<SortDirection>(
-                title: const Text('Ascending'),
-                value: SortDirection.ascending,
-                groupValue: currentDirection,
-                onChanged: (SortDirection? value) {
-                  setState(() => currentDirection = value!);
-                },
-              ),
-              RadioListTile<SortDirection>(
-                title: const Text('Descending'),
-                value: SortDirection.descending,
-                groupValue: currentDirection,
-                onChanged: (SortDirection? value) {
-                  setState(() => currentDirection = value!);
-                },
-              ),
+              _buildOverallBudgetCard(spendingData.totalAllocated, totalSpent),
+              const SizedBox(height: 24),
+              _buildCategorySection(),
+              const SizedBox(height: 16),
+              _buildBudgetList(budgets, spendingData.spentPerBudget),
+              const SizedBox(height: 24),
             ],
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Cancel'),
-            ),
-            TextButton(
-              onPressed: () {
-                setState(() {
-                  _applySorting(SortingOptions(
-                    category: currentCategory,
-                    direction: currentDirection,
-                  ));
-                });
-                Navigator.pop(context);
-              },
-              child: const Text('Apply'),
-            ),
-          ],
         );
       },
     );
   }
-
-  Widget _buildSearchContent(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(8.0),
-      child: TextField(
-        keyboardType: TextInputType.text,
-        controller: _searchController,
-        decoration: InputDecoration(
-          hintText: 'Search by name... ',
-          prefixIcon: Icon(Icons.search),
-          suffixIcon: Padding(
-            padding: const EdgeInsets.only(right: 8.0),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (_searchController.text.isNotEmpty)
-                  GestureDetector(
-                    onTap: () {
-                      setState(() {
-                        _searchController.clear();
-                        _searchTerm = '';
-                      });
-                    },
-                    child: const Icon(Icons.arrow_back),
-                  ),
-                if (_searchController.text.isEmpty)
-                  GestureDetector(
-                    onTap: () {
-                      setState(() {
-                        _isSearchVisible = false;
-                        _searchController.clear();
-                        _searchTerm = '';
-                      });
-                    },
-                    child: const Icon(Icons.close),
-                  ),
-              ],
-            ),
-          ),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(8.0),
-          ),
-          filled: true,
-          fillColor: Theme.of(context).scaffoldBackgroundColor,
-        ),
-        onChanged: (value) {
-          setState(() {
-            _searchTerm = value;
-          });
-        },
-      ),
-    );
-  }
-
-  final Map<String, bool> _expandedSections = {
-    'categories': true,
-    'amount_range': false,
-    'date_range': false,
-  };
-
-  Widget _buildCategoriesFilter(
-      List<String> selected, List<String> all, StateSetter setState) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _buildCategoriesDialogTitle(setState),
-        if (_expandedSections['categories']!) ...[
-          const SizedBox(height: 8),
-          _buildCategoriesFilterContent(all, selected, setState),
-        ]
-      ],
-    );
-  }
-
-  Widget _buildCategoriesDialogTitle(StateSetter catSetState) {
-    return InkWell(
-      onTap: () {
-        catSetState(() {
-          _expandedSections['categories'] = !_expandedSections['categories']!;
-        });
-      },
-      child: Row(children: [
-        Text(
-          'Categories',
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            fontSize: 25,
-          ),
-        ),
-        Icon(
-          _expandedSections['categories']!
-              ? Icons.expand_less
-              : Icons.expand_more,
-        ),
-      ]),
-    );
-  }
-
-  Widget _buildCategoriesFilterContent(List<String> allCategories,
-      List<String> selectedCategories, StateSetter catSetState) {
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      children: allCategories.map((category) {
-        final isSelected = selectedCategories.contains(category);
-        return FilterChip(
-          label: Text(category),
-          selected: isSelected,
-          onSelected: (selectedVal) {
-            catSetState(() {
-              if (selectedVal) {
-                selectedCategories.add(category);
-              } else {
-                selectedCategories.remove(category);
-              }
-            });
-          },
-          selectedColor:
-              CategoryUtils.getCategoryColor(category).withOpacity(0.2),
-          checkmarkColor: CategoryUtils.getCategoryColor(category),
-          backgroundColor: Colors.grey[200],
-          labelStyle: TextStyle(
-            color: isSelected
-                ? CategoryUtils.getCategoryColor(category)
-                : Colors.black,
-          ),
-        );
-      }).toList(),
-    );
-  }
-
-  Widget _buildAmountRangeFilter(StateSetter setState) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _buildAmountRangeTitle(setState),
-        if (_expandedSections['amount_range']!) ...[
-          const SizedBox(height: 8),
-          _buildAmountRangeFilterContent(setState),
-        ]
-      ],
-    );
-  }
-
-  Widget _buildAmountRangeTitle(StateSetter amtSetState) {
-    return InkWell(
-      onTap: () {
-        amtSetState(() {
-          _expandedSections['amount_range'] =
-              !_expandedSections['amount_range']!;
-        });
-      },
-      child: Row(children: [
-        Text(
-          'Amount Range',
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            fontSize: 25,
-          ),
-        ),
-        Icon(
-          _expandedSections['amount_range']!
-              ? Icons.expand_less
-              : Icons.expand_more,
-        ),
-      ]),
-    );
-  }
-
-  Widget _buildAmountRangeFilterContent(StateSetter amtSetState) {
-    return Column(
-      children: [
-        TextField(
-          controller: _minAmountController,
-          decoration: InputDecoration(
-            labelText: 'Min Amount (RM)',
-            border: const OutlineInputBorder(),
-            errorText: _minAmountError,
-          ),
-          keyboardType: TextInputType.numberWithOptions(decimal: true),
-          inputFormatters: [
-            FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}')),
-            TextInputFormatter.withFunction((oldValue, newValue) {
-              if (newValue.text.contains('.')) {
-                final parts = newValue.text.split('.');
-                if (parts[1].length > 2) {
-                  return oldValue;
-                }
-              }
-              return newValue;
-            }),
-          ],
-          onChanged: (value) {
-            _validateAmounts(value, _maxAmountController.text, amtSetState);
-          },
-        ),
-        const SizedBox(height: 8),
-        TextField(
-          controller: _maxAmountController,
-          decoration: InputDecoration(
-            labelText: 'Max Amount (RM)',
-            border: const OutlineInputBorder(),
-            errorText: _maxAmountError,
-          ),
-          keyboardType: TextInputType.number,
-          inputFormatters: [
-            FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}')),
-            TextInputFormatter.withFunction((oldValue, newValue) {
-              if (newValue.text.contains('.')) {
-                final parts = newValue.text.split('.');
-                if (parts[1].length > 2) {
-                  return oldValue;
-                }
-              }
-              return newValue;
-            }),
-          ],
-          onChanged: (value) {
-            _validateAmounts(_minAmountController.text, value, amtSetState);
-          },
-        ),
-      ],
-    );
-  }
-
-  Widget _buildDateRangeFilter(StateSetter setState) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _buildDateRangeTitle(setState),
-        if (_expandedSections['date_range']!) ...[
-          const SizedBox(height: 8),
-          _buildDateRangeFilterContent(setState),
-        ]
-      ],
-    );
-  }
-
-  Widget _buildDateRangeTitle(StateSetter dateSetState) {
-    return InkWell(
-      onTap: () {
-        dateSetState(() {
-          _expandedSections['date_range'] = !_expandedSections['date_range']!;
-        });
-      },
-      child: Row(children: [
-        Text(
-          'Date Range',
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            fontSize: 25,
-          ),
-        ),
-        Icon(
-          _expandedSections['date_range']!
-              ? Icons.expand_less
-              : Icons.expand_more,
-        ),
-      ]),
-    );
-  }
-
-  Widget _buildDateRangeFilterContent(StateSetter dateSetState) {
-    return Column(
-      children: [
-        TextField(
-          controller: _startDateController,
-          readOnly: true,
-          decoration: InputDecoration(
-            labelText: 'Start Date',
-            suffixIcon: Icon(Icons.calendar_today),
-            border: OutlineInputBorder(),
-            errorText: _startDateError,
-          ),
-          onTap: () async {
-            final pickedDate = await showDatePicker(
-              context: context,
-              initialDate: _filterStartDate ?? DateTime.now(),
-              firstDate: DateTime(2000),
-              lastDate: DateTime(2100),
-            );
-            if (pickedDate != null) {
-              dateSetState(() {
-                _filterStartDate = pickedDate;
-                _startDateController.text =
-                    DateFormat('dd/MM/yyyy').format(pickedDate);
-                _validateDateRange();
-              });
-            }
-          },
-        ),
-        const SizedBox(height: 8),
-        TextField(
-          controller: _endDateController,
-          readOnly: true,
-          decoration: InputDecoration(
-            labelText: 'End Date',
-            suffixIcon: Icon(Icons.calendar_today),
-            border: OutlineInputBorder(),
-            errorText: _endDateError,
-          ),
-          onTap: () async {
-            final pickedDate = await showDatePicker(
-              context: context,
-              initialDate: _filterEndDate ?? DateTime.now(),
-              firstDate: DateTime(2000),
-              lastDate: DateTime(2100),
-            );
-            if (pickedDate != null) {
-              dateSetState(() {
-                _filterEndDate = pickedDate;
-                _endDateController.text =
-                    DateFormat('dd/MM/yyyy').format(pickedDate);
-                _validateDateRange();
-              });
-            }
-          },
-        ),
-        const SizedBox(height: 8),
-        if (_filterStartDate != null || _filterEndDate != null) ...[
-          TextButton(
-            onPressed: () {
-              dateSetState(() {
-                _filterStartDate = null;
-                _filterEndDate = null;
-                _startDateController.clear();
-                _endDateController.clear();
-                _startDateError = null;
-                _endDateError = null;
-              });
-            },
-            child: const Text('Clear Date Range'),
-          ),
-        ],
-      ],
-    );
-  }
-
-  Widget _buildBudgetContent(List<BudgetModel> budgets) {
-  String statusTab = '';
-  return StreamBuilder<QuerySnapshot>(
-    stream: getTransactionStream(
-      startDate: DateTime(_selectedDate.year, _selectedDate.month, 1),
-      endDate: DateTime(
-          _selectedDate.year, _selectedDate.month + 1, 0, 23, 59, 59),
-    ),
-    builder: (context, transactionSnapshot) {
-      // Handle waiting state
-      if (transactionSnapshot.connectionState == ConnectionState.waiting) {
-        return _buildLoadingState();
-      }
-
-      // Handle error state
-      if (transactionSnapshot.hasError) {
-        return _buildErrorState(transactionSnapshot.error);
-      }
-
-      // Handle no data (null or empty snapshot)
-      if (!transactionSnapshot.hasData || transactionSnapshot.data == null) {
-        return _buildEmptyState('Transactions'); // Or handle as needed
-      }
-
-      // Handle empty budgets case
-      if (budgets.isEmpty) {
-        switch (_activeTabIndex) {
-          case 0:
-            statusTab = 'All';
-            break;
-          case 1:
-            statusTab = 'Active';
-            break;
-          case 2:
-            statusTab = 'Completed';
-            break;
-          case 3:
-            statusTab = 'Failed';
-            break;
-          case 4:
-            statusTab = 'Stopped';
-            break;
-          case 5:
-            statusTab = 'Deleted';
-            break;
-        }
-        return _buildEmptyState(statusTab);
-      }
-
-      // Process transactions
-      final allTransactions = transactionSnapshot.data!.docs
-          .map((doc) => TransactionModel.fromFirestore(doc))
-          .toList();
-
-      // Calculate totalSpent for the monthly overview
-      final totalSpent =
-          allTransactions.fold(0.0, (total, txn) => total + txn.amount);
-
-      // Filter transactions for budget-specific spending
-      final expenses = allTransactions
-          .where((txn) =>
-              budgets.any((budget) => budget.budgetId == txn.budgetId) &&
-              txn.date.isAfter((txn.budgetId != null
-                      ? budgets
-                          .firstWhere((b) => b.budgetId == txn.budgetId)
-                          .startDate
-                      : DateTime.now())
-                  .subtract(const Duration(seconds: 1))) &&
-              txn.date.isBefore((txn.budgetId != null
-                      ? budgets
-                          .firstWhere((b) => b.budgetId == txn.budgetId)
-                          .endDate
-                      : DateTime.now())
-                  .add(const Duration(seconds: 1))))
-          .toList();
-
-      final spendingData = _calculateSpendingData(expenses, budgets);
-
-      return SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildOverallBudgetCard(spendingData.totalAllocated, totalSpent),
-            const SizedBox(height: 24),
-            _buildCategorySection(),
-            const SizedBox(height: 16),
-            _buildBudgetList(budgets, spendingData.spentPerBudget),
-            const SizedBox(height: 24),
-          ],
-        ),
-      );
-    },
-  );
-}
 
   SpendingData _calculateSpendingData(
       List<TransactionModel>? transactionList, List<BudgetModel> budgets) {
     Map<String, double> spentPerCategory = {};
     Map<String, double> spentPerBudget = {};
-    double totalSpent = 0; // Not used, kept for compatibility
+    double totalSpent = 0;
 
     if (transactionList != null) {
       for (var transaction in transactionList) {
@@ -1170,32 +859,10 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
 
     return SpendingData(
       totalAllocated: totalAllocated,
-      totalSpent:
-          totalSpent, // Ignored since we calculate it in _buildBudgetContent
+      totalSpent: totalSpent,
       spentPerCategory: spentPerCategory,
       spentPerBudget: spentPerBudget,
     );
-  }
-
-  // New method to update currentSpent for all budgets
-  Future<void> _updateAllBudgetsCurrentSpent() async {
-    final budgets = await _firestore
-        .collection('budgets')
-        .where('userId', isEqualTo: _auth.currentUser?.uid)
-        .get();
-
-    final batch = _firestore.batch();
-
-    for (var doc in budgets.docs) {
-      final budget = BudgetModel.fromFirestore(doc);
-      await updateCurrentSpent(budget);
-      batch.update(doc.reference, {
-        'currentSpent': budget.currentSpent,
-        'lastUpdated': FieldValue.serverTimestamp(),
-      });
-    }
-
-    await batch.commit();
   }
 
   Future<void> updateCurrentSpent(BudgetModel budget) async {
@@ -1228,10 +895,7 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
   Future<void> updateFailedStatus(BudgetModel budget) async {
     try {
       DateTime failedDate = DateTime.now();
-      String status = budget.status.name;
-      setState(() {
-        status = Status.failed.name;
-      });
+      String status = Status.failed.name;
 
       await FirebaseFirestore.instance
           .collection('budgets')
@@ -1245,69 +909,6 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
         SnackBar(
             content: Text('Failed to change budget status: ${e.toString()}')),
       );
-    }
-  }
-
-  Future<void> _handleRecurringBudgets() async {
-    final now = DateTime.now();
-    final budgets = await _firestore
-        .collection('budgets')
-        .where('userId', isEqualTo: _auth.currentUser?.uid)
-        .where('isRecurring', isEqualTo: true)
-        .where('endDate', isLessThanOrEqualTo: Timestamp.fromDate(now))
-        .get();
-
-    final batch = _firestore.batch();
-
-    for (var doc in budgets.docs) {
-      final budget = BudgetModel.fromFirestore(doc);
-
-      final duration = budget.endDate.difference(budget.startDate);
-      final newStartDate = budget.endDate.add(Duration(days: 1));
-      final newEndDate = newStartDate.add(duration);
-
-      final newBudget = {
-        'budgetId': _firestore.collection('budgets').doc().id,
-        'budgetCategory': budget.budgetCategory,
-        'budgetName': budget.budgetName,
-        'targetAmount': budget.targetAmount,
-        'remark': budget.remark,
-        'duration': budget.duration,
-        'customDay': budget.customDays,
-        'startDate': newStartDate,
-        'endDate': newEndDate,
-        'userId': budget.userId,
-        'status': 'active',
-        'isRecurring': budget.isRecurring,
-        'nextOccurrence': _calculateNextOccurrence(budget.duration, newEndDate,
-            customDay: budget.customDays),
-      };
-
-      await _firestore.collection('budgets').add(newBudget);
-    }
-
-    await batch.commit();
-  }
-
-  DateTime _calculateNextOccurrence(DurationCategory duration, DateTime endDate,
-      {int? customDay}) {
-    switch (duration) {
-      case DurationCategory.daily:
-        return endDate.add(const Duration(days: 1));
-      case DurationCategory.weekly:
-        return endDate.add(const Duration(days: 7));
-      case DurationCategory.monthly:
-        final nextMonth = endDate.month + 1;
-        final nextYear = endDate.year + (nextMonth > 12 ? 1 : 0);
-        final adjustedMonth = nextMonth > 12 ? nextMonth - 12 : nextMonth;
-        return DateTime(
-          nextYear,
-          adjustedMonth,
-          min(endDate.day, DateUtils.getDaysInMonth(nextYear, adjustedMonth)),
-        );
-      case DurationCategory.custom:
-        final days = customDay ?? 0;
-        return endDate.add(Duration(days: days));
     }
   }
 
@@ -1539,9 +1140,10 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: statusColor.withOpacity(0.2),
+        color: statusColor.withAlpha((0.2 * 255).round()),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: statusColor.withOpacity(0.5), width: 1),
+        border: Border.all(
+            color: statusColor.withAlpha((0.5 * 255).round()), width: 1),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -1566,20 +1168,20 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
   }
 
   Widget _buildRepeatIcon(bool isRepeat) {
+    final baseColor = isRepeat ? Colors.purple : Colors.grey;
     return Tooltip(
       message: isRepeat ? 'Repeat Budget' : 'One-time Budget',
       child: Container(
         padding: const EdgeInsets.all(4),
         decoration: BoxDecoration(
-          color: isRepeat
-              ? Colors.purple.withOpacity(0.2)
-              : Colors.grey.withOpacity(0.2),
+          color: baseColor
+              .withAlpha((0.2 * 255).round()), // replaces withOpacity(0.2)
           shape: BoxShape.circle,
         ),
         child: Icon(
           Icons.repeat,
           size: 20,
-          color: isRepeat ? Colors.purple : Colors.grey,
+          color: baseColor,
         ),
       ),
     );
@@ -1591,7 +1193,6 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
         _buildCategoryIcon(budget),
         const SizedBox(width: 12),
         Flexible(
-          // Allow text to wrap or shrink
           child: _buildBudgetTitle(budget),
         ),
         const Spacer(),
@@ -1812,7 +1413,7 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
       Navigator.pushNamed(context, '/savings_goal');
     } else {
       setState(() => _currentIndex = index);
-      _updateAllBudgetsCurrentSpent();
+      // Only update if necessary, e.g., on explicit refresh
     }
   }
 
@@ -1838,10 +1439,6 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
     );
   }
 
-  void _navigateToBudgetHistory() {
-    Navigator.pushNamed(context, '/budget_history');
-  }
-
   Future<void> _selectMonth(BuildContext context) async {
     final DateTime? picked = await showMonthPicker(
       context: context,
@@ -1851,8 +1448,417 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
     );
 
     if (picked != null && picked != _selectedDate) {
-      setState(() => _selectedDate = picked);
+      setState(() {
+        _selectedDate = picked;
+        _isLoading = true; // Reset loading state for new month
+      });
     }
+  }
+
+  Widget _buildSortDialogContent(BuildContext context) {
+    SortCategory currentCategory = _sortingOptions.category;
+    SortDirection currentDirection = _sortingOptions.direction;
+
+    return StatefulBuilder(
+      builder: (context, setState) {
+        return AlertDialog(
+          title: const Text('Sort By'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ...SortCategory.values.map((category) {
+                return RadioListTile<SortCategory>(
+                  title: Row(
+                    children: [
+                      Icon(SortingUtils.getSortCategoryIcon(category)),
+                      const SizedBox(width: 8),
+                      Text(SortingUtils.getSortCategoryName(category)),
+                    ],
+                  ),
+                  value: category,
+                  groupValue: currentCategory,
+                  onChanged: (SortCategory? value) {
+                    setState(() => currentCategory = value!);
+                  },
+                );
+              }),
+              const Divider(),
+              RadioListTile<SortDirection>(
+                title: const Text('Ascending'),
+                value: SortDirection.ascending,
+                groupValue: currentDirection,
+                onChanged: (SortDirection? value) {
+                  setState(() => currentDirection = value!);
+                },
+              ),
+              RadioListTile<SortDirection>(
+                title: const Text('Descending'),
+                value: SortDirection.descending,
+                groupValue: currentDirection,
+                onChanged: (SortDirection? value) {
+                  setState(() => currentDirection = value!);
+                },
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () {
+                setState(() {
+                  _applySorting(SortingOptions(
+                    category: currentCategory,
+                    direction: currentDirection,
+                  ));
+                });
+                Navigator.pop(context);
+              },
+              child: const Text('Apply'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildSearchContent(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(8.0),
+      child: TextField(
+        keyboardType: TextInputType.text,
+        controller: _searchController,
+        decoration: InputDecoration(
+          hintText: 'Search by name... ',
+          prefixIcon: Icon(Icons.search),
+          suffixIcon: Padding(
+            padding: const EdgeInsets.only(right: 8.0),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (_searchController.text.isNotEmpty)
+                  GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        _searchController.clear();
+                        _searchTerm = '';
+                      });
+                    },
+                    child: const Icon(Icons.arrow_back),
+                  ),
+                if (_searchController.text.isEmpty)
+                  GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        _isSearchVisible = false;
+                        _searchController.clear();
+                        _searchTerm = '';
+                      });
+                    },
+                    child: const Icon(Icons.close),
+                  ),
+              ],
+            ),
+          ),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8.0),
+          ),
+          filled: true,
+          fillColor: Theme.of(context).scaffoldBackgroundColor,
+        ),
+        onChanged: (value) {
+          setState(() {
+            _searchTerm = value;
+          });
+        },
+      ),
+    );
+  }
+
+  final Map<String, bool> _expandedSections = {
+    'categories': true,
+    'amount_range': false,
+    'date_range': false,
+  };
+
+  Widget _buildCategoriesFilter(
+      List<String> selected, List<String> all, StateSetter setState) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildCategoriesDialogTitle(setState),
+        if (_expandedSections['categories']!) ...[
+          const SizedBox(height: 8),
+          _buildCategoriesFilterContent(all, selected, setState),
+        ]
+      ],
+    );
+  }
+
+  Widget _buildCategoriesDialogTitle(StateSetter catSetState) {
+    return InkWell(
+      onTap: () {
+        catSetState(() {
+          _expandedSections['categories'] = !_expandedSections['categories']!;
+        });
+      },
+      child: Row(children: [
+        Text(
+          'Categories',
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            fontSize: 25,
+          ),
+        ),
+        Icon(
+          _expandedSections['categories']!
+              ? Icons.expand_less
+              : Icons.expand_more,
+        ),
+      ]),
+    );
+  }
+
+  Widget _buildCategoriesFilterContent(List<String> allCategories,
+      List<String> selectedCategories, StateSetter catSetState) {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: allCategories.map((category) {
+        final isSelected = selectedCategories.contains(category);
+        return FilterChip(
+          label: Text(category),
+          selected: isSelected,
+          onSelected: (selectedVal) {
+            catSetState(() {
+              if (selectedVal) {
+                selectedCategories.add(category);
+              } else {
+                selectedCategories.remove(category);
+              }
+            });
+          },
+          selectedColor: CategoryUtils.getCategoryColor(category)
+              .withAlpha((0.2 * 255).round()),
+          checkmarkColor: CategoryUtils.getCategoryColor(category),
+          backgroundColor: Colors.grey[200],
+          labelStyle: TextStyle(
+            color: isSelected
+                ? CategoryUtils.getCategoryColor(category)
+                : Colors.black,
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  Widget _buildAmountRangeFilter(StateSetter setState) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildAmountRangeTitle(setState),
+        if (_expandedSections['amount_range']!) ...[
+          const SizedBox(height: 8),
+          _buildAmountRangeFilterContent(setState),
+        ]
+      ],
+    );
+  }
+
+  Widget _buildAmountRangeTitle(StateSetter amtSetState) {
+    return InkWell(
+      onTap: () {
+        amtSetState(() {
+          _expandedSections['amount_range'] =
+              !_expandedSections['amount_range']!;
+        });
+      },
+      child: Row(children: [
+        Text(
+          'Amount Range',
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            fontSize: 25,
+          ),
+        ),
+        Icon(
+          _expandedSections['amount_range']!
+              ? Icons.expand_less
+              : Icons.expand_more,
+        ),
+      ]),
+    );
+  }
+
+  Widget _buildAmountRangeFilterContent(StateSetter amtSetState) {
+    return Column(
+      children: [
+        TextField(
+          controller: _minAmountController,
+          decoration: InputDecoration(
+            labelText: 'Min Amount (RM)',
+            border: const OutlineInputBorder(),
+            errorText: _minAmountError,
+          ),
+          keyboardType: TextInputType.numberWithOptions(decimal: true),
+          inputFormatters: [
+            FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}')),
+            TextInputFormatter.withFunction((oldValue, newValue) {
+              if (newValue.text.contains('.')) {
+                final parts = newValue.text.split('.');
+                if (parts[1].length > 2) {
+                  return oldValue;
+                }
+              }
+              return newValue;
+            }),
+          ],
+          onChanged: (value) {
+            _validateAmounts(value, _maxAmountController.text, amtSetState);
+          },
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: _maxAmountController,
+          decoration: InputDecoration(
+            labelText: 'Max Amount (RM)',
+            border: const OutlineInputBorder(),
+            errorText: _maxAmountError,
+          ),
+          keyboardType: TextInputType.number,
+          inputFormatters: [
+            FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}')),
+            TextInputFormatter.withFunction((oldValue, newValue) {
+              if (newValue.text.contains('.')) {
+                final parts = newValue.text.split('.');
+                if (parts[1].length > 2) {
+                  return oldValue;
+                }
+              }
+              return newValue;
+            }),
+          ],
+          onChanged: (value) {
+            _validateAmounts(_minAmountController.text, value, amtSetState);
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDateRangeFilter(StateSetter setState) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildDateRangeTitle(setState),
+        if (_expandedSections['date_range']!) ...[
+          const SizedBox(height: 8),
+          _buildDateRangeFilterContent(setState),
+        ]
+      ],
+    );
+  }
+
+  Widget _buildDateRangeTitle(StateSetter dateSetState) {
+    return InkWell(
+      onTap: () {
+        dateSetState(() {
+          _expandedSections['date_range'] = !_expandedSections['date_range']!;
+        });
+      },
+      child: Row(children: [
+        Text(
+          'Date Range',
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            fontSize: 25,
+          ),
+        ),
+        Icon(
+          _expandedSections['date_range']!
+              ? Icons.expand_less
+              : Icons.expand_more,
+        ),
+      ]),
+    );
+  }
+
+  Widget _buildDateRangeFilterContent(StateSetter dateSetState) {
+    return Column(
+      children: [
+        TextField(
+          controller: _startDateController,
+          readOnly: true,
+          decoration: InputDecoration(
+            labelText: 'Start Date',
+            suffixIcon: Icon(Icons.calendar_today),
+            border: OutlineInputBorder(),
+            errorText: _startDateError,
+          ),
+          onTap: () async {
+            final pickedDate = await showDatePicker(
+              context: context,
+              initialDate: _filterStartDate ?? DateTime.now(),
+              firstDate: DateTime(2000),
+              lastDate: DateTime(2100),
+            );
+            if (pickedDate != null) {
+              dateSetState(() {
+                _filterStartDate = pickedDate;
+                _startDateController.text =
+                    DateFormat('dd/MM/yyyy').format(pickedDate);
+                _validateDateRange();
+              });
+            }
+          },
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: _endDateController,
+          readOnly: true,
+          decoration: InputDecoration(
+            labelText: 'End Date',
+            suffixIcon: Icon(Icons.calendar_today),
+            border: OutlineInputBorder(),
+            errorText: _endDateError,
+          ),
+          onTap: () async {
+            final pickedDate = await showDatePicker(
+              context: context,
+              initialDate: _filterEndDate ?? DateTime.now(),
+              firstDate: DateTime(2000),
+              lastDate: DateTime(2100),
+            );
+            if (pickedDate != null) {
+              dateSetState(() {
+                _filterEndDate = pickedDate;
+                _endDateController.text =
+                    DateFormat('dd/MM/yyyy').format(pickedDate);
+                _validateDateRange();
+              });
+            }
+          },
+        ),
+        const SizedBox(height: 8),
+        if (_filterStartDate != null || _filterEndDate != null) ...[
+          TextButton(
+            onPressed: () {
+              dateSetState(() {
+                _filterStartDate = null;
+                _filterEndDate = null;
+                _startDateController.clear();
+                _endDateController.clear();
+                _startDateError = null;
+                _endDateError = null;
+              });
+            },
+            child: const Text('Clear Date Range'),
+          ),
+        ],
+      ],
+    );
   }
 }
 

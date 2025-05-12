@@ -3,7 +3,7 @@ import 'package:intl/intl.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:mobile_app_assignment/models/transaction_model.dart';
-import 'package:mobile_app_assignment/category_utils.dart';
+import 'package:mobile_app_assignment/utils/category_utils.dart';
 
 class EditIncomeScreen extends StatefulWidget {
   const EditIncomeScreen({super.key});
@@ -42,8 +42,11 @@ class EditIncomeScreenState extends State<EditIncomeScreen> {
   void didChangeDependencies() {
     super.didChangeDependencies();
 
-    final arguments = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
-    if (arguments != null && arguments.containsKey('id') && !_hasLoadedInitialData) {
+    final arguments =
+        ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+    if (arguments != null &&
+        arguments.containsKey('id') &&
+        !_hasLoadedInitialData) {
       _incomeId = arguments['id'] as String;
       _loadIncomeData();
       _hasLoadedInitialData = true;
@@ -59,7 +62,8 @@ class EditIncomeScreenState extends State<EditIncomeScreen> {
 
   void _loadIncomeData() async {
     try {
-      final doc = await _firestore.collection('transactions').doc(_incomeId).get();
+      final doc =
+          await _firestore.collection('transactions').doc(_incomeId).get();
       if (doc.exists) {
         final transaction = TransactionModel.fromFirestore(doc);
 
@@ -140,7 +144,8 @@ class EditIncomeScreenState extends State<EditIncomeScreen> {
                         border: OutlineInputBorder(),
                         prefixIcon: Icon(Icons.attach_money),
                       ),
-                      keyboardType: TextInputType.numberWithOptions(decimal: true),
+                      keyboardType:
+                          TextInputType.numberWithOptions(decimal: true),
                       validator: (value) {
                         if (value == null || value.isEmpty) {
                           return 'Please enter an amount';
@@ -182,14 +187,16 @@ class EditIncomeScreenState extends State<EditIncomeScreen> {
                         child: DropdownButton<String>(
                           value: _selectedCategory,
                           isExpanded: true,
-                          items: CategoryUtils.incomeCategories.map((String category) {
+                          items: CategoryUtils.incomeCategories
+                              .map((String category) {
                             return DropdownMenuItem<String>(
                               value: category,
                               child: Row(
                                 children: [
                                   Icon(
                                     CategoryUtils.getCategoryIcon(category),
-                                    color: CategoryUtils.getCategoryColor(category),
+                                    color: CategoryUtils.getCategoryColor(
+                                        category),
                                     size: 20,
                                   ),
                                   const SizedBox(width: 8),
@@ -277,7 +284,10 @@ class EditIncomeScreenState extends State<EditIncomeScreen> {
           isExpense: false,
         );
 
-        await _firestore.collection('transactions').doc(_incomeId).update(transaction.toMap());
+        await _firestore
+            .collection('transactions')
+            .doc(_incomeId)
+            .update(transaction.toMap());
 
         if (!mounted) return;
 
@@ -304,24 +314,27 @@ class EditIncomeScreenState extends State<EditIncomeScreen> {
   void _showDeleteConfirmation() {
     showDialog(
       context: context,
-      builder: (BuildContext context) {
+      builder: (BuildContext dialogContext) {
         return AlertDialog(
           title: const Text('Delete Income'),
           content: const Text('Are you sure you want to delete this income?'),
           actions: [
             TextButton(
-              onPressed: () => Navigator.of(context).pop(),
+              onPressed: () => Navigator.of(dialogContext).pop(),
               child: const Text('Cancel'),
             ),
             TextButton(
               onPressed: () async {
-                Navigator.of(context).pop();
-                try {
-                  setState(() {
-                    _isLoading = true;
-                  });
+                Navigator.of(dialogContext).pop();
+                setState(() {
+                  _isLoading = true;
+                });
 
-                  await _firestore.collection('transactions').doc(_incomeId).delete();
+                try {
+                  await _firestore
+                      .collection('transactions')
+                      .doc(_incomeId)
+                      .delete();
 
                   if (!mounted) return;
 
@@ -332,7 +345,9 @@ class EditIncomeScreenState extends State<EditIncomeScreen> {
                 } catch (e) {
                   if (!mounted) return;
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Error deleting income: ${e.toString()}')),
+                    SnackBar(
+                        content:
+                            Text('Error deleting income: ${e.toString()}')),
                   );
                 } finally {
                   if (mounted) {

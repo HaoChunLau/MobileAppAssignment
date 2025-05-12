@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:mobile_app_assignment/budgeting&goal_management/budget_overview_screen.dart';
 import 'package:mobile_app_assignment/expense&income_tracking/transactions_screen.dart';
 import 'package:mobile_app_assignment/reports&analytics/reports_overview_screen.dart';
-import 'package:mobile_app_assignment/category_utils.dart';
+import 'package:mobile_app_assignment/utils/category_utils.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
@@ -339,7 +339,7 @@ class HomeContentState extends State<HomeContent> {
             _buildActionButton(
               context,
               Icons.pie_chart,
-              'Budget',
+              'Add Budget',
               '/budget_add',
               Colors.blue,
             ),
@@ -415,7 +415,7 @@ class HomeContentState extends State<HomeContent> {
               CategoryUtils.getCategoryColor(category),
               isExpense: transaction['isExpense'] as bool,
             );
-          }).toList(),
+          }),
       ],
     );
   }
@@ -485,7 +485,7 @@ class HomeContentState extends State<HomeContent> {
               totalSpent: budget.currentSpent,
               totalBudget: budget.targetAmount,
             );
-          }).toList(),
+          }),
       ],
     );
   }

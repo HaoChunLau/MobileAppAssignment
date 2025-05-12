@@ -97,9 +97,6 @@ class BudgetModel {
     );
   }
 
-  //=======================
-  //    HELPER METHOD
-  //=======================
   static DurationCategory _parseDuration(String value) {
     return DurationCategory.values.firstWhere(
           (e) => e.name == value.toLowerCase(),
@@ -176,6 +173,6 @@ class BudgetModel {
       return accumulatedTotal + amount;
     });
 
-    updateStatus(); // Update status based on new spending
+    updateStatus();
   }
 }

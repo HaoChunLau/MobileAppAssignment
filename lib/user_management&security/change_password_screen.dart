@@ -9,10 +9,12 @@ class ChangePasswordScreen extends StatefulWidget {
 }
 
 class ChangePasswordScreenState extends State<ChangePasswordScreen> {
-  final TextEditingController _currentPasswordController = TextEditingController();
+  final TextEditingController _currentPasswordController =
+      TextEditingController();
   final TextEditingController _newPasswordController = TextEditingController();
-  final TextEditingController _confirmPasswordController = TextEditingController();
-  
+  final TextEditingController _confirmPasswordController =
+      TextEditingController();
+
   bool _isCurrentPasswordVisible = false;
   bool _isNewPasswordVisible = false;
   bool _isConfirmPasswordVisible = false;
@@ -89,8 +91,8 @@ class ChangePasswordScreenState extends State<ChangePasswordScreen> {
             prefixIcon: Icon(Icons.lock_outline),
             suffixIcon: IconButton(
               icon: Icon(
-                _isCurrentPasswordVisible 
-                    ? Icons.visibility_off 
+                _isCurrentPasswordVisible
+                    ? Icons.visibility_off
                     : Icons.visibility,
               ),
               onPressed: () {
@@ -113,9 +115,7 @@ class ChangePasswordScreenState extends State<ChangePasswordScreen> {
             prefixIcon: Icon(Icons.lock),
             suffixIcon: IconButton(
               icon: Icon(
-                _isNewPasswordVisible 
-                    ? Icons.visibility_off 
-                    : Icons.visibility,
+                _isNewPasswordVisible ? Icons.visibility_off : Icons.visibility,
               ),
               onPressed: () {
                 setState(() {
@@ -137,8 +137,8 @@ class ChangePasswordScreenState extends State<ChangePasswordScreen> {
             prefixIcon: Icon(Icons.lock_clock),
             suffixIcon: IconButton(
               icon: Icon(
-                _isConfirmPasswordVisible 
-                    ? Icons.visibility_off 
+                _isConfirmPasswordVisible
+                    ? Icons.visibility_off
                     : Icons.visibility,
               ),
               onPressed: () {
@@ -164,15 +164,15 @@ class ChangePasswordScreenState extends State<ChangePasswordScreen> {
     // based on the new password value
     String password = _newPasswordController.text;
     double strength = 0;
-    
+
     if (password.length >= 8) strength += 0.25;
     if (password.contains(RegExp(r'[A-Z]'))) strength += 0.25;
     if (password.contains(RegExp(r'[0-9]'))) strength += 0.25;
     if (password.contains(RegExp(r'[!@#$%^&*(),.?":{}|<>]'))) strength += 0.25;
-    
+
     Color indicatorColor;
     String strengthText;
-    
+
     if (strength <= 0.25) {
       indicatorColor = Colors.red;
       strengthText = 'Weak';
@@ -186,7 +186,7 @@ class ChangePasswordScreenState extends State<ChangePasswordScreen> {
       indicatorColor = Colors.green;
       strengthText = 'Strong';
     }
-    
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -254,64 +254,73 @@ class ChangePasswordScreenState extends State<ChangePasswordScreen> {
     if (_currentPasswordController.text.isEmpty ||
         _newPasswordController.text.isEmpty ||
         _confirmPasswordController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Please fill all fields')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please fill all fields')),
+        );
+      }
       return;
     }
-    
+
     if (_newPasswordController.text != _confirmPasswordController.text) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('New passwords do not match')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('New passwords do not match')),
+        );
+      }
       return;
     }
-    
+
     if (_newPasswordController.text.length < 8) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Password should be at least 8 characters')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text('Password should be at least 8 characters')),
+        );
+      }
       return;
     }
-    
+
     setState(() => _isLoading = true);
-    
+
     try {
       // Get current user
       final User? user = _auth.currentUser;
-      
+
       if (user == null) {
         throw Exception("User not authenticated");
       }
-      
+
       // Get credentials with current password for reauthentication
       AuthCredential credential = EmailAuthProvider.credential(
         email: user.email!,
         password: _currentPasswordController.text,
       );
-      
+
       // Reauthenticate user
       await user.reauthenticateWithCredential(credential);
-      
+
       // Update password
       await user.updatePassword(_newPasswordController.text);
-      
+
       if (!mounted) return;
-      
+
       // Show success message
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
+        const SnackBar(
           content: Text('Password updated successfully'),
           backgroundColor: Colors.green,
         ),
       );
-      
-      Navigator.pop(context);
+
+      if (mounted) {
+        Navigator.pop(context);
+      }
     } on FirebaseAuthException catch (e) {
       if (!mounted) return;
-      
+
       String errorMessage = 'Failed to update password';
-      
+
       if (e.code == 'wrong-password') {
         errorMessage = 'The current password you entered is incorrect';
       } else if (e.code == 'weak-password') {
@@ -320,23 +329,30 @@ class ChangePasswordScreenState extends State<ChangePasswordScreen> {
         errorMessage = 'Please log in again before changing your password';
         // You could handle this by signing the user out and redirecting to login
         await _auth.signOut();
-        Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
+        if (mounted) {
+          Navigator.of(context)
+              .pushNamedAndRemoveUntil('/login', (route) => false);
+        }
       }
-      
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(errorMessage),
-          backgroundColor: Colors.red,
-        ),
-      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(errorMessage),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error: ${e.toString()}'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);

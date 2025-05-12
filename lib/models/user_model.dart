@@ -7,10 +7,12 @@ class UserModel {
   String? name;
   String? phoneNumber;
   String? photoUrl;
-  String? currency; // For ProfileManagementScreen's _currency
+  String? currency;
   DateTime? createdAt;
-  double? latitude; // New field for map location
-  double? longitude; // New field for map location
+  double? latitude;
+  double? longitude;
+  bool? emailPendingVerification;
+  bool emailVerified;//add this
 
   UserModel({
     this.id,
@@ -18,11 +20,17 @@ class UserModel {
     this.name,
     this.phoneNumber,
     this.photoUrl,
-    this.currency = 'MYR (RM)', // Default from ProfileManagementScreen
+    this.currency = 'MYR (RM)',
     this.createdAt,
-    this.latitude, // Initialize new field
-    this.longitude, // Initialize new field
-  });
+    this.latitude,
+    this.longitude,
+    this.emailPendingVerification,
+    this.emailVerified = false,//add this
+  }) {
+    if (email.isEmpty) {
+      throw ArgumentError('Email cannot be empty');
+    }
+  }
 
   // Convert to Map for Firestore
   Map<String, dynamic> toMap() {
@@ -33,8 +41,10 @@ class UserModel {
       'photoUrl': photoUrl,
       'currency': currency,
       'createdAt': createdAt != null ? Timestamp.fromDate(createdAt!) : null,
-      'latitude': latitude, // Add to Firestore map
-      'longitude': longitude, // Add to Firestore map
+      'latitude': latitude,
+      'longitude': longitude,
+      'emailPendingVerification': emailPendingVerification,
+      'emailVerified': emailVerified,//add this
     };
   }
 
@@ -49,8 +59,10 @@ class UserModel {
       photoUrl: data['photoUrl'],
       currency: data['currency'] ?? 'MYR (RM)',
       createdAt: (data['createdAt'] as Timestamp?)?.toDate(),
-      latitude: data['latitude']?.toDouble(), // Read from Firestore
-      longitude: data['longitude']?.toDouble(), // Read from Firestore
+      latitude: data['latitude']?.toDouble(),
+      longitude: data['longitude']?.toDouble(),
+      emailPendingVerification: data['emailPendingVerification'],
+      emailVerified: data['emailVerified'] ?? false,//add this
     );
   }
 
@@ -63,8 +75,8 @@ class UserModel {
       phoneNumber: user.phoneNumber,
       photoUrl: user.photoURL,
       createdAt: user.metadata.creationTime,
-      latitude: null, // Default to null for new users
-      longitude: null, // Default to null for new users
+      latitude: null,
+      longitude: null,
     );
   }
 }

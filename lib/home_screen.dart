@@ -505,7 +505,11 @@ class HomeContentState extends State<HomeContent> {
                 '${(progress * 100).toInt()}%',
                 style: TextStyle(
                   fontWeight: FontWeight.bold,
-                  color: progress > 0.8 ? Colors.red : Colors.black87,
+                  color: progress > 0.8
+                      ? Theme.of(context).colorScheme.error // Use theme's error color
+                      : Theme.of(context).brightness == Brightness.dark
+                      ? Theme.of(context).colorScheme.onSurface // Light color in dark mode
+                      : Colors.black87,
                 ),
               ),
             ],

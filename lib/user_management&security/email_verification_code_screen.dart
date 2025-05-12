@@ -191,10 +191,15 @@ class _EmailVerificationInstructionsScreenState
   // UI Components
 
   Widget _buildStatusIndicator() {
+    final bool isDarkMode = Theme.of(context).brightness == Brightness.dark;
     return Icon(
       _isEmailVerified ? Icons.check_circle : Icons.email,
       size: 80,
-      color: _isEmailVerified ? Colors.green : Theme.of(context).primaryColor,
+      color: _isEmailVerified
+          ? Colors.greenAccent
+          : isDarkMode
+          ? Colors.white
+          : Theme.of(context).primaryColor,
     );
   }
 
@@ -217,20 +222,21 @@ class _EmailVerificationInstructionsScreenState
           : 'We sent a verification link to ${widget.email}. Please check your inbox or spam folder and click the link to verify your email.',
       style: TextStyle(
         fontSize: 16,
-        color: Colors.grey[700],
+        color: Colors.grey[500],
       ),
       textAlign: TextAlign.center,
     );
   }
 
   Widget _buildCancelButton() {
+    final bool isDarkMode = Theme.of(context).brightness == Brightness.dark;
     return TextButton(
       onPressed: _handleCancel,
       child: Text(
         'Cancel and Return to Login',
         style: TextStyle(
           fontSize: 16,
-          color: Theme.of(context).primaryColor,
+          color: isDarkMode ? Colors.deepPurpleAccent : Theme.of(context).primaryColor,
           fontWeight: FontWeight.w600,
         ),
       ),

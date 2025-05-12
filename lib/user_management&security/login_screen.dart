@@ -112,7 +112,9 @@ class LoginScreenState extends State<LoginScreen> {
         Icon(
           Icons.account_balance_wallet,
           size: 64,
-          color: Theme.of(context).primaryColor,
+          color: Theme.of(context).brightness == Brightness.dark
+              ? Colors.white // Use white or a light color in dark mode
+              : Theme.of(context).primaryColor,
         ),
         SizedBox(height: 16),
         Text(

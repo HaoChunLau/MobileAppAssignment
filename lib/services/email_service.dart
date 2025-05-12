@@ -1,7 +1,5 @@
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
 
 class EmailService {
   // Your email sending provider API key (store this in environment variables in production)

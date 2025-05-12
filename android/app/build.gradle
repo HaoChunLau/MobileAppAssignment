@@ -12,6 +12,7 @@ android {
     namespace = "com.example.mobile_app_assignment"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
+    compileSdkVersion 35
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_1_8
@@ -31,6 +32,8 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        targetSdkVersion 34
+        minSdkVersion 23
     }
 
     buildTypes {

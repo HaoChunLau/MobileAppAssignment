@@ -19,7 +19,9 @@ import 'package:mobile_app_assignment/reports&analytics/export_screen.dart';
 import 'package:mobile_app_assignment/reports&analytics/monthly_summary_screen.dart';
 import 'package:mobile_app_assignment/reports&analytics/reports_overview_screen.dart';
 import 'package:mobile_app_assignment/user_management&security/change_password_screen.dart';
+import 'package:mobile_app_assignment/user_management&security/email_verification_code_screen.dart';
 import 'package:mobile_app_assignment/user_management&security/forgot_password_screen.dart';
+import 'package:mobile_app_assignment/user_management&security/help_support_screen.dart';
 import 'package:mobile_app_assignment/user_management&security/login_screen.dart';
 import 'package:mobile_app_assignment/user_management&security/profile_management_screen.dart';
 import 'package:mobile_app_assignment/user_management&security/setting_screen.dart';
@@ -146,7 +148,18 @@ class FinanceAppState extends State<FinanceApp> {
         '/change_password': (context) => AuthGuard(child: ChangePasswordScreen()),
         '/forgot_password': (context) => ForgotPasswordScreen(),
         '/settings': (context) => AuthGuard(child: SettingsScreen(onThemeChanged: _updateThemeMode)),
+        '/help_support': (context) => AuthGuard(child: HelpSupportScreen()),
         '/home': (context) => AuthGuard(child: HomeScreen()),
+        '/verify_email': (context) => AuthGuard(
+              child: EmailVerificationInstructionsScreen(
+                email: FirebaseAuth.instance.currentUser?.email ?? '',
+                name: '', // You may need to fetch or pass the name
+                phoneNumber: '', // You may need to fetch or pass the phone number
+                onVerificationComplete: () async {
+                  // This will be handled by the screen itself, but you can define additional logic if needed
+                },
+              ),
+            ),
       },
     );
   }

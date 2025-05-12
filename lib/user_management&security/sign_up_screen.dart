@@ -205,7 +205,9 @@ class SignUpScreenState extends State<SignUpScreen> {
         Icon(
           Icons.account_circle,
           size: 64,
-          color: Theme.of(context).primaryColor,
+          color: Theme.of(context).brightness == Brightness.dark
+              ? Colors.white // Use white or a light color in dark mode
+              : Theme.of(context).primaryColor,
         ),
         SizedBox(height: 16),
         Text(
@@ -330,13 +332,19 @@ class SignUpScreenState extends State<SignUpScreen> {
         Expanded(
           child: RichText(
             text: TextSpan(
-              style: TextStyle(color: Colors.grey[800]),
+              style: TextStyle(
+                color: Theme.of(context).brightness == Brightness.dark
+                    ? Colors.white
+                    : Theme.of(context).primaryColor,
+              ),
               children: [
                 TextSpan(text: 'I agree to the '),
                 TextSpan(
                   text: 'Terms of Service',
                   style: TextStyle(
-                    color: Theme.of(context).primaryColor,
+                    color: Theme.of(context).brightness == Brightness.dark
+                        ? Colors.purple
+                        : Theme.of(context).primaryColor,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
@@ -344,8 +352,9 @@ class SignUpScreenState extends State<SignUpScreen> {
                 TextSpan(
                   text: 'Privacy Policy',
                   style: TextStyle(
-                    color: Theme.of(context).primaryColor,
-                    fontWeight: FontWeight.bold,
+                    color: Theme.of(context).brightness == Brightness.dark
+                        ? Colors.purple
+                        : Theme.of(context).primaryColor,
                   ),
                 ),
               ],

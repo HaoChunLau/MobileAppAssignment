@@ -30,12 +30,15 @@ class _SavingsGoalAddScreenState extends State<SavingsGoalAddScreen> {
   // Initialize these with null or empty values
   late IconData _selectedIcon;
   late Color _selectedColor;
-  DateTime _endDate = DateTime.now().add(Duration(days: 7)); // Default to weekly
+  DateTime _endDate = DateTime.now().add(
+      Duration(days: 7)); // Default to weekly
   final DateTime _startDate = DateTime.now(); // Default to current date
   DurationCategory _selectedDuration = DurationCategory.weekly;
-  bool _isRecurring = false;
+  final bool _isRecurring = false;
 
-  void initState() {  //set default value
+  @override
+  void initState() {
+    //set default value
     super.initState();
     _initializeDefaultValues();
   }
@@ -68,10 +71,6 @@ class _SavingsGoalAddScreenState extends State<SavingsGoalAddScreen> {
 
     super.dispose();
   }
-
-  //=====================
-  // BUSINESS LOGIC
-  //=====================
 
   Future<void> _selectDate() async {
     final DateTime? picked = await showDatePicker(
@@ -118,7 +117,9 @@ class _SavingsGoalAddScreenState extends State<SavingsGoalAddScreen> {
   }
 
   void _updateDurationFromDates() {
-    final daysDifference = _endDate.difference(_startDate).inDays;
+    final daysDifference = _endDate
+        .difference(_startDate)
+        .inDays;
 
     setState(() {
       if (daysDifference == 0) { // Same day
@@ -133,7 +134,8 @@ class _SavingsGoalAddScreenState extends State<SavingsGoalAddScreen> {
       }
       else if (daysDifference >= 28 && daysDifference <= 31) {
         // Check if it's approximately a month
-        final nextMonth = DateTime(_startDate.year, _startDate.month + 1, _startDate.day);
+        final nextMonth = DateTime(
+            _startDate.year, _startDate.month + 1, _startDate.day);
         if (_endDate.day == nextMonth.day) {
           _selectedDuration = DurationCategory.monthly;
         } else {
@@ -184,12 +186,12 @@ class _SavingsGoalAddScreenState extends State<SavingsGoalAddScreen> {
   Future<void> _saveSaving() async {
     if (_formKey.currentState!.validate()) {
       try {
-
         final isDuplicate = await _isDuplicateSaving();
         if (isDuplicate) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('A saving with this name already exists for the selected time period'),
+              content: Text(
+                  'A saving with this name already exists for the selected time period'),
               backgroundColor: Colors.orange,
             ),
           );
@@ -201,7 +203,10 @@ class _SavingsGoalAddScreenState extends State<SavingsGoalAddScreen> {
 
         //PASSING DATA TO FIREBASE
         final savingData = {
-          'savingGoalId':  _firestore.collection('savings').doc().id,
+          'savingGoalId': _firestore
+              .collection('savings')
+              .doc()
+              .id,
           'goalCategory': _categoryController.text,
           'title': _savingNameController.text,
           'targetAmount': double.parse(_amountController.text),
@@ -242,7 +247,9 @@ class _SavingsGoalAddScreenState extends State<SavingsGoalAddScreen> {
   //=====================
   String? _savingTitleValidator(String? value) {
     if (value == null || value.isEmpty) return 'Please enter a budget title';
-    if (value.length > 20) return 'We only accept 20 characters. Please try again';
+    if (value.length > 20) {
+      return 'We only accept 20 characters. Please try again';
+    }
     return null;
   }
 
@@ -261,7 +268,9 @@ class _SavingsGoalAddScreenState extends State<SavingsGoalAddScreen> {
   String? _amountValidator(String? value) {
     if (value == null || value.isEmpty) return 'Please enter a budget amount';
     final amount = double.tryParse(value);
-    if (amount == null || amount <= 0) return 'Please enter a valid positive amount';
+    if (amount == null || amount <= 0) {
+      return 'Please enter a valid positive amount';
+    }
     return null;
   }
 
@@ -305,41 +314,41 @@ class _SavingsGoalAddScreenState extends State<SavingsGoalAddScreen> {
     );
   }
 
-  AppBar _buildAppBar(){
+  AppBar _buildAppBar() {
     return AppBar(
       title: Text('Add Savings Goal'),
     );
   }
 
-  Widget _buildBody(){
+  Widget _buildBody() {
     return SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildCategoryNameField(),
-              const SizedBox(height: 20),
-              _buildSavingNameField(),
-              const SizedBox(height: 20),
-              _buildDueDateField(),
-              const SizedBox(height: 20),
-              _buildAmountField(),
-              const SizedBox(height: 20),
-              _buildDurationField(),
-              const SizedBox(height: 20),
-              _buildRemarkField(),
-              const SizedBox(height: 32),
-              _buildPreview(),
+      padding: const EdgeInsets.all(16.0),
+      child: Form(
+        key: _formKey,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildCategoryNameField(),
+            const SizedBox(height: 20),
+            _buildSavingNameField(),
+            const SizedBox(height: 20),
+            _buildDueDateField(),
+            const SizedBox(height: 20),
+            _buildAmountField(),
+            const SizedBox(height: 20),
+            _buildDurationField(),
+            const SizedBox(height: 20),
+            _buildRemarkField(),
+            const SizedBox(height: 32),
+            _buildPreview(),
 
-            ],
-          ),
+          ],
         ),
+      ),
     );
   }
 
-  Widget _buildCategoryNameField(){
+  Widget _buildCategoryNameField() {
     return SizedBox(
       width: 210,
       height: 60,
@@ -348,15 +357,51 @@ class _SavingsGoalAddScreenState extends State<SavingsGoalAddScreen> {
           labelText: 'Category',
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(15.0),
+            borderSide: BorderSide(
+              color: Theme
+                  .of(context)
+                  .brightness == Brightness.dark
+                  ? Theme
+                  .of(context)
+                  .colorScheme
+                  .onSurface
+                  : Theme
+                  .of(context)
+                  .colorScheme
+                  .primary,
+            ),
           ),
           filled: true,
-          fillColor: Colors.purple[50],
+          fillColor: Theme
+              .of(context)
+              .brightness == Brightness.dark
+              ? Theme
+              .of(context)
+              .colorScheme
+              .surface
+              : Colors.purple[50],
+          labelStyle: TextStyle(
+            color: Theme
+                .of(context)
+                .brightness == Brightness.dark
+                ? Theme
+                .of(context)
+                .colorScheme
+                .onSurface
+                : Theme
+                .of(context)
+                .colorScheme
+                .primary,
+          ),
         ),
         child: DropdownButtonHideUnderline(
           child: DropdownButton<String>(
-            value: SavingCategoryUtils.categories.contains(_categoryController.text)
+            value: SavingCategoryUtils.categories.contains(
+                _categoryController.text)
                 ? _categoryController.text
-                : (SavingCategoryUtils.categories.isNotEmpty ? SavingCategoryUtils.categories[0] : null),
+                : (SavingCategoryUtils.categories.isNotEmpty
+                ? SavingCategoryUtils.categories[0]
+                : null),
             isExpanded: true,
             borderRadius: BorderRadius.circular(15.0),
             icon: Icon(Icons.arrow_drop_down),
@@ -385,7 +430,8 @@ class _SavingsGoalAddScreenState extends State<SavingsGoalAddScreen> {
                 setState(() {
                   _categoryController.text = newValue;
                   _selectedIcon = SavingCategoryUtils.getCategoryIcon(newValue);
-                  _selectedColor = SavingCategoryUtils.getCategoryColor(newValue);
+                  _selectedColor =
+                      SavingCategoryUtils.getCategoryColor(newValue);
                 });
               }
             },
@@ -395,7 +441,7 @@ class _SavingsGoalAddScreenState extends State<SavingsGoalAddScreen> {
     );
   }
 
-  Widget _buildSavingNameField(){
+  Widget _buildSavingNameField() {
     return TextFormField(
       controller: _savingNameController,
       decoration: const InputDecoration(
@@ -416,7 +462,7 @@ class _SavingsGoalAddScreenState extends State<SavingsGoalAddScreen> {
     );
   }
 
-  Widget _buildDueDateField(){
+  Widget _buildDueDateField() {
     return GestureDetector(
       onTap: _selectDate, // Trigger date picker on any tap
       child: AbsorbPointer(
@@ -427,8 +473,10 @@ class _SavingsGoalAddScreenState extends State<SavingsGoalAddScreen> {
             labelText: 'Due Date',
             hintText: 'Select a date',
             border: const OutlineInputBorder(),
-            prefixIcon: const Icon(Icons.calendar_today), // Optional prefix
-            suffixIcon: const Icon(Icons.arrow_drop_down), // Optional dropdown hint
+            prefixIcon: const Icon(Icons.calendar_today),
+            // Optional prefix
+            suffixIcon: const Icon(
+                Icons.arrow_drop_down), // Optional dropdown hint
           ),
           validator: _dueDateValidator,
         ),
@@ -461,7 +509,7 @@ class _SavingsGoalAddScreenState extends State<SavingsGoalAddScreen> {
     );
   }
 
-  Widget _buildDurationField(){
+  Widget _buildDurationField() {
     return Column(
       children: [
         DropdownButtonHideUnderline(
@@ -504,7 +552,7 @@ class _SavingsGoalAddScreenState extends State<SavingsGoalAddScreen> {
     );
   }
 
-  Widget _buildCustomDaysField(){
+  Widget _buildCustomDaysField() {
     return Padding(
       padding: const EdgeInsets.only(top: 10),
       child: TextFormField(
@@ -528,7 +576,7 @@ class _SavingsGoalAddScreenState extends State<SavingsGoalAddScreen> {
     );
   }
 
-  Widget _buildRemarkField(){
+  Widget _buildRemarkField() {
     return TextFormField(
       controller: _remarkController,
       decoration: const InputDecoration(
@@ -581,15 +629,18 @@ class _SavingsGoalAddScreenState extends State<SavingsGoalAddScreen> {
               if (_savingNameController.text != '')...[
                 Text(
                   _savingNameController.text,
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  style: const TextStyle(
+                      fontSize: 16, fontWeight: FontWeight.bold),
                 ),
               ]
-              else ...[
-                Text(
-                  'Saving Title',
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                ),
-              ],
+              else
+                ...[
+                  Text(
+                    'Saving Title',
+                    style: const TextStyle(
+                        fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                ],
 
               const SizedBox(height: 4),
               Text(
@@ -614,15 +665,16 @@ class _SavingsGoalAddScreenState extends State<SavingsGoalAddScreen> {
                 ),
               ),
             ]
-            else...[
-              Text(
-                'RM 0.00',
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
+            else
+              ...[
+                Text(
+                  'RM 0.00',
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
-              ),
-            ],
+              ],
             const SizedBox(height: 4),
             Text(
               '0%',
@@ -654,12 +706,12 @@ class _SavingsGoalAddScreenState extends State<SavingsGoalAddScreen> {
     final remainAmount = amount;
 
     return LinearProgressIndicator(
-        value: 0,
-        backgroundColor: Colors.grey[200],
-        valueColor: AlwaysStoppedAnimation<Color>(_getProgressColor(0)),
-        minHeight: 8,
-        borderRadius: BorderRadius.circular(4),
-      );
+      value: 0,
+      backgroundColor: Colors.grey[200],
+      valueColor: AlwaysStoppedAnimation<Color>(_getProgressColor(0)),
+      minHeight: 8,
+      borderRadius: BorderRadius.circular(4),
+    );
   }
 
   Color _getProgressColor(double progress) {
@@ -668,7 +720,7 @@ class _SavingsGoalAddScreenState extends State<SavingsGoalAddScreen> {
     return Colors.red;
   }
 
-  Widget _buildProgressDetail(){
+  Widget _buildProgressDetail() {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
@@ -686,20 +738,23 @@ class _SavingsGoalAddScreenState extends State<SavingsGoalAddScreen> {
             ),
           ),
         ]
-        else ...[
-          Text(
-            'Remaining: RM 0.00',
-            style: const TextStyle(
-              fontWeight: FontWeight.w500,
+        else
+          ...[
+            Text(
+              'Remaining: RM 0.00',
+              style: const TextStyle(
+                fontWeight: FontWeight.w500,
+              ),
             ),
-          ),
-        ],
+          ],
       ],
     );
   }
 
-  Widget _buildSavingButton(){
-    final daysRemaining = _endDate.difference(_startDate).inDays;
+  Widget _buildSavingButton() {
+    final daysRemaining = _endDate
+        .difference(_startDate)
+        .inDays;
     final categoryName = _categoryController.text;
     final categoryColor = SavingCategoryUtils.getCategoryColor(categoryName);
 
@@ -717,15 +772,15 @@ class _SavingsGoalAddScreenState extends State<SavingsGoalAddScreen> {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: BoxDecoration(
-            color: categoryColor,
-            borderRadius: BorderRadius.circular(8),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.1),
-                blurRadius: 2,
-                offset: const Offset(0, 1),
-              )
-            ]
+              color: categoryColor,
+              borderRadius: BorderRadius.circular(8),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.1),
+                  blurRadius: 2,
+                  offset: const Offset(0, 1),
+                )
+              ]
           ),
           child: const Text(
             'Add Money',
@@ -741,11 +796,37 @@ class _SavingsGoalAddScreenState extends State<SavingsGoalAddScreen> {
 
   Widget _buildSubmitButton() {
     bool isFormValid = _formKey.currentState?.validate() ?? false;
-    return FloatingActionButton(
-      onPressed: isFormValid ? _saveSaving : null,
-      shape: CircleBorder(),
-      backgroundColor: isFormValid ? Colors.purple[100] : Colors.grey[300],
-      child: const Icon(Icons.check),
+    final isDarkMode = Theme
+        .of(context)
+        .brightness == Brightness.dark;
+
+    return Container(
+      decoration: isDarkMode
+          ? BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.all(
+          color: Colors.white, // White border in dark mode
+          width: 2.0,
+        ),
+      )
+          : null, // No border in light mode
+      child: FloatingActionButton(
+        onPressed: isFormValid ? _saveSaving : null,
+        shape: const CircleBorder(), // Circular shape for the button
+        backgroundColor: isDarkMode
+            ? Colors.white // Black background in dark mode
+            : isFormValid
+            ? Colors.purple[100] // Purple background when valid in light mode
+            : Colors.grey[300], // Grey background when invalid in light mode
+        child: Icon(
+          Icons.check,
+          color: isDarkMode
+              ? Colors.black // White icon in dark mode
+              : Theme
+              .of(context)
+              .primaryColor, // Primary color in light mode
+        ),
+      ),
     );
   }
 }

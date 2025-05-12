@@ -41,15 +41,6 @@ class ProfileManagementScreenState extends State<ProfileManagementScreen> {
   void initState() {
     super.initState();
     _loadUserData();
-
-    _auth.authStateChanges().listen((User? user) {
-      if (user != null && mounted) {
-        // Check if email has changed
-        if (_emailController.text != user.email) {
-          _updateFirestoreEmail(user.email!);
-        }
-      }
-    });
   }
 
   @override
@@ -88,7 +79,7 @@ class ProfileManagementScreenState extends State<ProfileManagementScreen> {
 
       setState(() {
         _nameController.text = user.name ?? '';
-        _emailController.text = user.email;
+        _emailController.text = currentUser.email ?? user.email;
         _phoneController.text = user.phoneNumber ?? '';
         _currency = user.currency ?? 'MYR (RM)';
         _photoUrl = user.photoUrl;
@@ -675,19 +666,21 @@ class ProfileManagementScreenState extends State<ProfileManagementScreen> {
               children: [
                 CircleAvatar(
                   radius: 60,
-                  backgroundColor: Theme.of(context)
-                      .primaryColor
-                      .withAlpha((0.1 * 255).round()),
+                  backgroundColor: Theme.of(context).brightness == Brightness.dark
+                      ? Colors.grey[800] // Darker, contrasting background in dark mode
+                      : Theme.of(context).primaryColor.withAlpha((0.1 * 255).round()),
                   backgroundImage:
-                      _photoUrl != null && _photoUrl!.startsWith('data:image')
-                          ? MemoryImage(base64Decode(_photoUrl!.split(',')[1]))
-                          : null,
+                  _photoUrl != null && _photoUrl!.startsWith('data:image')
+                      ? MemoryImage(base64Decode(_photoUrl!.split(',')[1]))
+                      : null,
                   child: _photoUrl == null
                       ? Icon(
-                          Icons.person,
-                          size: 80,
-                          color: Theme.of(context).primaryColor,
-                        )
+                    Icons.person,
+                    size: 80,
+                    color: Theme.of(context).brightness == Brightness.dark
+                        ? Colors.white // White icon in dark mode
+                        : Theme.of(context).primaryColor,
+                  )
                       : null,
                 ),
                 if (_isEditing)

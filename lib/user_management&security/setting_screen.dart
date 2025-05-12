@@ -96,8 +96,7 @@ class SettingsScreenState extends State<SettingsScreen> {
             leading: Icon(Icons.help),
             title: Text('Help & Support'),
             onTap: () {
-              // Navigate to Help & Support Screen
-              // Navigator.pushNamed(context, '/help_support');
+              Navigator.pushNamed(context, '/help_support');
             },
           ),
           ListTile(
@@ -108,7 +107,7 @@ class SettingsScreenState extends State<SettingsScreen> {
                 context: context,
                 applicationName: 'Clarity Finance',
                 applicationVersion: '1.0.0',
-                applicationLegalese: '© 2025 Your Team Name',
+                applicationLegalese: '© 2025 THREE SMALL',
                 children: [
                   Padding(
                     padding: const EdgeInsets.only(top: 16.0),

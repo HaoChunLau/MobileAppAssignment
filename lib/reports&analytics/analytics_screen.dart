@@ -33,10 +33,10 @@ class AnalyticsScreenState extends State<AnalyticsScreen>
   double _avgMonthlyIncome = 0.0;
   Map<String, double> _incomeSources = {};
 
-  // Data for Savings Tab
-  double _savingsRate = 0.0;
-  double _avgSavingsRate = 0.0;
-  Map<String, double> _savingsByMonth = {};
+  // Data for Net Savings Tab
+  double _netSavingsRate = 0.0;
+  double _avgNetSavingsRate = 0.0;
+  Map<String, double> _netSavingsByMonth = {};
 
   @override
   void initState() {
@@ -121,13 +121,11 @@ class AnalyticsScreenState extends State<AnalyticsScreen>
       Map<String, double> spendingCategories = {
         for (var category in CategoryUtils.expenseCategories) category: 0.0
       };
-      spendingCategories['Other'] =
-          0.0; // Explicitly add "Other" for invalid categories
+      spendingCategories['Other'] = 0.0; // Explicitly add "Other" for invalid categories
       Map<String, double> incomeSources = {
         for (var category in CategoryUtils.incomeCategories) category: 0.0
       };
-      incomeSources['Other'] =
-          0.0; // Explicitly add "Other" for invalid categories
+      incomeSources['Other'] = 0.0; // Explicitly add "Other" for invalid categories
       Map<String, double> spendingByDay = {
         'Mon': 0.0,
         'Tue': 0.0,
@@ -137,11 +135,11 @@ class AnalyticsScreenState extends State<AnalyticsScreen>
         'Sat': 0.0,
         'Sun': 0.0
       };
-      Map<String, double> savingsByMonth = {};
+      Map<String, double> netSavingsByMonth = {};
 
       for (int i = 0; i < monthsInRange; i++) {
         DateTime month = DateTime(endDate.year, endDate.month - i, 1);
-        savingsByMonth[DateFormat('MMM').format(month)] = 0.0;
+        netSavingsByMonth[DateFormat('MMM').format(month)] = 0.0;
       }
 
       for (var doc in querySnapshot.docs) {
@@ -171,41 +169,37 @@ class AnalyticsScreenState extends State<AnalyticsScreen>
         }
 
         String monthKey = DateFormat('MMM').format(date);
-        if (savingsByMonth.containsKey(monthKey)) {
+        if (netSavingsByMonth.containsKey(monthKey)) {
           if (isExpense) {
-            savingsByMonth[monthKey] = savingsByMonth[monthKey]! - amount;
+            netSavingsByMonth[monthKey] = netSavingsByMonth[monthKey]! - amount;
           } else {
-            savingsByMonth[monthKey] = savingsByMonth[monthKey]! + amount;
+            netSavingsByMonth[monthKey] = netSavingsByMonth[monthKey]! + amount;
           }
         }
       }
 
-      double avgDailySpending =
-          daysInRange > 0 ? totalExpense / daysInRange : 0.0;
-      double avgMonthlyIncome =
-          monthsInRange > 0 ? totalIncome / monthsInRange : 0.0;
-      double savingsRate =
-          (totalIncome > 0) ? (totalIncome - totalExpense) / totalIncome : 0.0;
+      double avgDailySpending = daysInRange > 0 ? totalExpense / daysInRange : 0.0;
+      double avgMonthlyIncome = monthsInRange > 0 ? totalIncome / monthsInRange : 0.0;
+      double netSavingsRate = (totalIncome > 0) ? (totalIncome - totalExpense) / totalIncome : 0.0;
 
-      double maxSpendingDay =
-          spendingByDay.values.reduce((a, b) => a > b ? a : b);
+      double maxSpendingDay = spendingByDay.values.reduce((a, b) => a > b ? a : b);
       if (maxSpendingDay > 0) {
         spendingByDay.updateAll((key, value) => value / maxSpendingDay);
       }
 
-      double avgSavingsRate = 0.0;
+      double avgNetSavingsRate = 0.0;
       int validMonths = 0;
-      savingsByMonth.forEach((month, savings) {
+      netSavingsByMonth.forEach((month, savings) {
         if (totalIncome > 0) {
           double rate = savings / totalIncome;
-          savingsByMonth[month] = rate.clamp(0.0, 1.0);
-          avgSavingsRate += rate;
+          netSavingsByMonth[month] = rate.clamp(0.0, 1.0);
+          avgNetSavingsRate += rate;
           validMonths++;
         } else {
-          savingsByMonth[month] = 0.0;
+          netSavingsByMonth[month] = 0.0;
         }
       });
-      avgSavingsRate = validMonths > 0 ? avgSavingsRate / validMonths : 0.0;
+      avgNetSavingsRate = validMonths > 0 ? avgNetSavingsRate / validMonths : 0.0;
 
       setState(() {
         _totalSpending = totalExpense;
@@ -215,9 +209,9 @@ class AnalyticsScreenState extends State<AnalyticsScreen>
         _totalIncome = totalIncome;
         _avgMonthlyIncome = avgMonthlyIncome;
         _incomeSources = incomeSources;
-        _savingsRate = savingsRate.clamp(0.0, 1.0);
-        _avgSavingsRate = avgSavingsRate.clamp(0.0, 1.0);
-        _savingsByMonth = savingsByMonth;
+        _netSavingsRate = netSavingsRate.clamp(0.0, 1.0);
+        _avgNetSavingsRate = avgNetSavingsRate.clamp(0.0, 1.0);
+        _netSavingsByMonth = netSavingsByMonth;
         _isLoading = false;
       });
     } catch (e) {
@@ -238,7 +232,7 @@ class AnalyticsScreenState extends State<AnalyticsScreen>
           tabs: [
             Tab(text: 'Spending'),
             Tab(text: 'Income'),
-            Tab(text: 'Savings'),
+            Tab(text: 'Net Savings'),
           ],
         ),
       ),
@@ -261,7 +255,7 @@ class AnalyticsScreenState extends State<AnalyticsScreen>
                     children: [
                       _buildSpendingTab(),
                       _buildIncomeTab(),
-                      _buildSavingsTab(),
+                      _buildNetSavingsTab(),
                     ],
                   ),
           ),
@@ -335,17 +329,31 @@ class AnalyticsScreenState extends State<AnalyticsScreen>
     );
   }
 
-  Widget _buildSavingsTab() {
+  Widget _buildNetSavingsTab() {
     return SingleChildScrollView(
       padding: EdgeInsets.all(16.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildSavingsProgressCard(),
+          _buildNetSavingsProgressCard(),
           SizedBox(height: 20),
-          _buildSavingsByMonthCard(),
-          SizedBox(height: 20),
-          _buildSavingsGoalsCard(),
+          _buildNetSavingsByMonthCard(),
+        ],
+      ),
+    );
+  }
+
+  void _showGraphExplanation(BuildContext context, String title, String explanation) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(title),
+        content: Text(explanation),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: Text('OK'),
+          ),
         ],
       ),
     );
@@ -362,12 +370,25 @@ class AnalyticsScreenState extends State<AnalyticsScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'Spending Trends',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
+            Row(
+              children: [
+                Text(
+                  'Spending Trends',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                SizedBox(width: 8),
+                IconButton(
+                  icon: Icon(Icons.info_outline, size: 20, color: Colors.grey[600]),
+                  onPressed: () => _showGraphExplanation(
+                    context,
+                    'Spending Trends',
+                    'This graph compares your total spending for the selected period to your average daily spending, projected over a month. It helps you see if your spending is trending higher or lower than usual. Use this to understand your overall spending pattern and identify if you’re overspending.',
+                  ),
+                ),
+              ],
             ),
             SizedBox(height: 16),
             _totalSpending == 0.0
@@ -461,12 +482,25 @@ class AnalyticsScreenState extends State<AnalyticsScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'Top Spending Categories',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
+            Row(
+              children: [
+                Text(
+                  'Top Spending Categories',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                SizedBox(width: 8),
+                IconButton(
+                  icon: Icon(Icons.info_outline, size: 20, color: Colors.grey[600]),
+                  onPressed: () => _showGraphExplanation(
+                    context,
+                    'Top Spending Categories',
+                    'This pie chart shows how your spending is distributed across categories (e.g., Food, Transport). Each slice represents a category’s percentage of your total spending. It highlights where most of your money goes, helping you spot areas to cut back.',
+                  ),
+                ),
+              ],
             ),
             SizedBox(height: 16),
             _totalSpending == 0.0
@@ -499,11 +533,9 @@ class AnalyticsScreenState extends State<AnalyticsScreen>
                             sections: _spendingCategories.entries
                                 .where((entry) => entry.value > 0)
                                 .map((entry) => PieChartSectionData(
-                                      color: CategoryUtils.getCategoryColor(
-                                          entry.key),
+                                      color: CategoryUtils.getCategoryColor(entry.key),
                                       value: entry.value,
-                                      title:
-                                          '${(entry.value / _totalSpending * 100).toStringAsFixed(1)}%',
+                                      title: '${(entry.value / _totalSpending * 100).toStringAsFixed(1)}%',
                                       radius: 80,
                                       titleStyle: TextStyle(
                                         fontSize: 12,
@@ -528,8 +560,7 @@ class AnalyticsScreenState extends State<AnalyticsScreen>
                                     Container(
                                       width: 12,
                                       height: 12,
-                                      color: CategoryUtils.getCategoryColor(
-                                          entry.key),
+                                      color: CategoryUtils.getCategoryColor(entry.key),
                                     ),
                                     SizedBox(width: 4),
                                     Text(entry.key),
@@ -556,12 +587,25 @@ class AnalyticsScreenState extends State<AnalyticsScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'Spending by Day of Week',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
+            Row(
+              children: [
+                Text(
+                  'Spending by Day of Week',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                SizedBox(width: 8),
+                IconButton(
+                  icon: Icon(Icons.info_outline, size: 20, color: Colors.grey[600]),
+                  onPressed: () => _showGraphExplanation(
+                    context,
+                    'Spending by Day of Week',
+                    'This graph shows your spending for each day of the week, normalized to compare days. Higher points indicate days you spend more. It helps you identify which days you tend to spend more, so you can plan better.',
+                  ),
+                ),
+              ],
             ),
             SizedBox(height: 16),
             _totalSpending == 0.0
@@ -635,8 +679,7 @@ class AnalyticsScreenState extends State<AnalyticsScreen>
                               FlSpot(5, _spendingByDay['Sat']! * 100),
                               FlSpot(6, _spendingByDay['Sun']! * 100),
                             ],
-                            isCurved:
-                                false, // Changed to false for straight lines
+                            isCurved: false,
                             color: Colors.blue,
                             barWidth: 2,
                             dotData: FlDotData(show: true),
@@ -664,12 +707,25 @@ class AnalyticsScreenState extends State<AnalyticsScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'Income Trends',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
+            Row(
+              children: [
+                Text(
+                  'Income Trends',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                SizedBox(width: 8),
+                IconButton(
+                  icon: Icon(Icons.info_outline, size: 20, color: Colors.grey[600]),
+                  onPressed: () => _showGraphExplanation(
+                    context,
+                    'Income Trends',
+                    'This graph compares your total income for the selected period to your average monthly income. It shows if your income is above or below your usual level. Use this to track your income stability and plan your budget.',
+                  ),
+                ),
+              ],
             ),
             SizedBox(height: 16),
             _totalIncome == 0.0
@@ -763,12 +819,25 @@ class AnalyticsScreenState extends State<AnalyticsScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'Income Sources',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
+            Row(
+              children: [
+                Text(
+                  'Income Sources',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                SizedBox(width: 8),
+                IconButton(
+                  icon: Icon(Icons.info_outline, size: 20, color: Colors.grey[600]),
+                  onPressed: () => _showGraphExplanation(
+                    context,
+                    'Income Sources',
+                    'This pie chart shows where your income comes from (e.g., Salary, Freelance). Each slice represents a source’s percentage of your total income. It helps you understand your income diversity and reliance on specific sources.',
+                  ),
+                ),
+              ],
             ),
             SizedBox(height: 16),
             _totalIncome == 0.0
@@ -779,7 +848,7 @@ class AnalyticsScreenState extends State<AnalyticsScreen>
                         Icon(
                           Icons.account_balance,
                           size: 24,
-                          color: Colors.grey[400],
+                          color: Colors.grey[600],
                         ),
                         SizedBox(width: 8),
                         Text(
@@ -801,11 +870,9 @@ class AnalyticsScreenState extends State<AnalyticsScreen>
                             sections: _incomeSources.entries
                                 .where((entry) => entry.value > 0)
                                 .map((entry) => PieChartSectionData(
-                                      color: CategoryUtils.getCategoryColor(
-                                          entry.key),
+                                      color: CategoryUtils.getCategoryColor(entry.key),
                                       value: entry.value,
-                                      title:
-                                          '${(entry.value / _totalIncome * 100).toStringAsFixed(1)}%',
+                                      title: '${(entry.value / _totalIncome * 100).toStringAsFixed(1)}%',
                                       radius: 80,
                                       titleStyle: TextStyle(
                                         fontSize: 12,
@@ -830,8 +897,7 @@ class AnalyticsScreenState extends State<AnalyticsScreen>
                                     Container(
                                       width: 12,
                                       height: 12,
-                                      color: CategoryUtils.getCategoryColor(
-                                          entry.key),
+                                      color: CategoryUtils.getCategoryColor(entry.key),
                                     ),
                                     SizedBox(width: 4),
                                     Text(entry.key),
@@ -847,7 +913,7 @@ class AnalyticsScreenState extends State<AnalyticsScreen>
     );
   }
 
-  Widget _buildSavingsProgressCard() {
+  Widget _buildNetSavingsProgressCard() {
     return Card(
       elevation: 2,
       shape: RoundedRectangleBorder(
@@ -858,12 +924,25 @@ class AnalyticsScreenState extends State<AnalyticsScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'Savings Rate',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
+            Row(
+              children: [
+                Text(
+                  'Net Savings Rate',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                SizedBox(width: 8),
+                IconButton(
+                  icon: Icon(Icons.info_outline, size: 20, color: Colors.grey[600]),
+                  onPressed: () => _showGraphExplanation(
+                    context,
+                    'Net Savings Rate',
+                    'This shows your savings rate, calculated as (Income - Expenses) / Income, for the current period and your average over time. A higher percentage means you’re saving more of your income. It measures how much of your income you’re saving, helping you gauge your financial health.',
+                  ),
+                ),
+              ],
             ),
             SizedBox(height: 16),
             (_totalIncome == 0.0 && _totalSpending == 0.0)
@@ -900,7 +979,7 @@ class AnalyticsScreenState extends State<AnalyticsScreen>
                             ),
                             SizedBox(height: 4),
                             Text(
-                              '${(_savingsRate * 100).toInt()}%',
+                              '${(_netSavingsRate * 100).toInt()}%',
                               style: TextStyle(
                                 fontSize: 24,
                                 fontWeight: FontWeight.bold,
@@ -909,10 +988,9 @@ class AnalyticsScreenState extends State<AnalyticsScreen>
                             ),
                             SizedBox(height: 8),
                             LinearProgressIndicator(
-                              value: _savingsRate,
+                              value: _netSavingsRate,
                               backgroundColor: Colors.grey[200],
-                              valueColor:
-                                  AlwaysStoppedAnimation<Color>(Colors.green),
+                              valueColor: AlwaysStoppedAnimation<Color>(Colors.green),
                               minHeight: 8,
                               borderRadius: BorderRadius.circular(4),
                             ),
@@ -932,7 +1010,7 @@ class AnalyticsScreenState extends State<AnalyticsScreen>
                             ),
                             SizedBox(height: 4),
                             Text(
-                              '${(_avgSavingsRate * 100).toInt()}%',
+                              '${(_avgNetSavingsRate * 100).toInt()}%',
                               style: TextStyle(
                                 fontSize: 24,
                                 fontWeight: FontWeight.bold,
@@ -941,10 +1019,9 @@ class AnalyticsScreenState extends State<AnalyticsScreen>
                             ),
                             SizedBox(height: 8),
                             LinearProgressIndicator(
-                              value: _avgSavingsRate,
+                              value: _avgNetSavingsRate,
                               backgroundColor: Colors.grey[200],
-                              valueColor:
-                                  AlwaysStoppedAnimation<Color>(Colors.blue),
+                              valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
                               minHeight: 8,
                               borderRadius: BorderRadius.circular(4),
                             ),
@@ -959,7 +1036,7 @@ class AnalyticsScreenState extends State<AnalyticsScreen>
     );
   }
 
-  Widget _buildSavingsByMonthCard() {
+  Widget _buildNetSavingsByMonthCard() {
     return Card(
       elevation: 2,
       shape: RoundedRectangleBorder(
@@ -970,12 +1047,25 @@ class AnalyticsScreenState extends State<AnalyticsScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'Savings by Month',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
+            Row(
+              children: [
+                Text(
+                  'Net Savings by Month',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                SizedBox(width: 8),
+                IconButton(
+                  icon: Icon(Icons.info_outline, size: 20, color: Colors.grey[600]),
+                  onPressed: () => _showGraphExplanation(
+                    context,
+                    'Net Savings by Month',
+                    'This graph shows your savings rate for each month in the selected period. Each point represents a month’s savings rate as a percentage of income. It helps you track how your savings rate changes over time, so you can improve your saving habits.',
+                  ),
+                ),
+              ],
             ),
             SizedBox(height: 16),
             (_totalIncome == 0.0 && _totalSpending == 0.0)
@@ -1008,11 +1098,12 @@ class AnalyticsScreenState extends State<AnalyticsScreen>
                             sideTitles: SideTitles(
                               showTitles: true,
                               getTitlesWidget: (value, meta) {
-                                final months = _savingsByMonth.keys.toList();
+                                final months = _netSavingsByMonth.keys.toList();
                                 if (value.toInt() < months.length) {
-                                  return Text(months[value.toInt()],
-                                      style: TextStyle(
-                                          fontSize: 12, color: Colors.black));
+                                  return Text(
+                                    months[value.toInt()],
+                                    style: TextStyle(fontSize: 12, color: Colors.black),
+                                  );
                                 }
                                 return Text('');
                               },
@@ -1025,12 +1116,9 @@ class AnalyticsScreenState extends State<AnalyticsScreen>
                         borderData: FlBorderData(show: false),
                         lineBarsData: [
                           LineChartBarData(
-                            spots: _savingsByMonth.entries.map((entry) {
-                              final index = _savingsByMonth.keys
-                                  .toList()
-                                  .indexOf(entry.key);
-                              return FlSpot(
-                                  index.toDouble(), entry.value * 100);
+                            spots: _netSavingsByMonth.entries.map((entry) {
+                              final index = _netSavingsByMonth.keys.toList().indexOf(entry.key);
+                              return FlSpot(index.toDouble(), entry.value * 100);
                             }).toList(),
                             isCurved: true,
                             color: Colors.green,
@@ -1049,52 +1137,7 @@ class AnalyticsScreenState extends State<AnalyticsScreen>
     );
   }
 
-  Widget _buildSavingsGoalsCard() {
-    return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Padding(
-        padding: EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Savings Goals Progress',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            SizedBox(height: 16),
-            Center(
-              child: Column(
-                children: [
-                  Icon(
-                    Icons.lightbulb_outline,
-                    size: 40,
-                    color: Colors.grey[400],
-                  ),
-                  SizedBox(height: 8),
-                  Text(
-                    'Savings goals feature coming soon!',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.grey[600],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildStatItem(
-      String title, String value, IconData icon, Color color) {
+  Widget _buildStatItem(String title, String value, IconData icon, Color color) {
     return Expanded(
       child: Row(
         children: [

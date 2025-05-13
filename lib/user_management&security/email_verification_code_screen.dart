@@ -9,12 +9,12 @@ class EmailVerificationInstructionsScreen extends StatefulWidget {
   final Function onVerificationComplete;
 
   const EmailVerificationInstructionsScreen({
-    Key? key,
+    super.key,
     required this.email,
     required this.name,
     required this.phoneNumber,
     required this.onVerificationComplete,
-  }) : super(key: key);
+  });
 
   @override
   State<EmailVerificationInstructionsScreen> createState() =>
@@ -48,7 +48,7 @@ class _EmailVerificationInstructionsScreenState
     // Set up periodic verification checks
     _timer = Timer.periodic(
       const Duration(seconds: 5),
-      (_) => _checkEmailVerified(),
+          (_) => _checkEmailVerified(),
     );
   }
 
@@ -219,7 +219,7 @@ class _EmailVerificationInstructionsScreenState
     final bool isDarkMode = Theme.of(context).brightness == Brightness.dark;
     return Text(
       _isEmailVerified
-          ? 'Your email has been verified successfully. Redirecting to home screen...'
+          ? 'Your email has been verified successfully. Redirecting to login screen...'
           : 'We sent a verification link to ${widget.email}. Please check your inbox or spam folder and click the link to verify your email.',
       style: TextStyle(
         fontSize: 16,

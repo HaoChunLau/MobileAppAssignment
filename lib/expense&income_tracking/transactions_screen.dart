@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+import 'package:month_picker_dialog/month_picker_dialog.dart';
 import 'package:mobile_app_assignment/expense&income_tracking/expense_list_screen.dart';
 import 'package:mobile_app_assignment/expense&income_tracking/income_list_screen.dart';
 
@@ -8,13 +10,30 @@ class TransactionsScreen extends StatefulWidget {
   @override
   State<TransactionsScreen> createState() => _TransactionsScreenState();
 }
-class _TransactionsScreenState extends State<TransactionsScreen>{
+
+class _TransactionsScreenState extends State<TransactionsScreen> {
   int _currentIndex = 1;
+  DateTime _selectedDate = DateTime.now();
+
+  Future<void> _selectMonth(BuildContext context) async {
+    final DateTime? picked = await showMonthPicker(
+      context: context,
+      initialDate: _selectedDate,
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2101),
+    );
+
+    if (picked != null && picked != _selectedDate) {
+      setState(() {
+        _selectedDate = picked;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return PopScope(
-      canPop: false, // Prevent default pop
+      canPop: false,
       onPopInvokedWithResult: (didPop, result) {
         if (!didPop) {
           Navigator.pushReplacementNamed(context, '/home');
@@ -24,9 +43,16 @@ class _TransactionsScreenState extends State<TransactionsScreen>{
         length: 2,
         child: Scaffold(
           appBar: AppBar(
-            title: Text('Transactions'),
+            title: Text('Transactions - ${DateFormat('MMM yyyy').format(_selectedDate)}'),
             automaticallyImplyLeading: false,
-            bottom: TabBar(
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.calendar_today),
+                tooltip: 'Select Month',
+                onPressed: () => _selectMonth(context),
+              ),
+            ],
+            bottom: const TabBar(
               tabs: [
                 Tab(text: 'Expenses'),
                 Tab(text: 'Income'),
@@ -35,8 +61,8 @@ class _TransactionsScreenState extends State<TransactionsScreen>{
           ),
           body: TabBarView(
             children: [
-              ExpenseListScreen(),
-              IncomeListScreen(),
+              ExpenseListScreen(selectedDate: _selectedDate),
+              IncomeListScreen(selectedDate: _selectedDate),
             ],
           ),
           floatingActionButton: FloatingActionButton(
@@ -49,19 +75,45 @@ class _TransactionsScreenState extends State<TransactionsScreen>{
                     child: Column(
                       children: [
                         ListTile(
-                          leading: Icon(Icons.remove_circle, color: Colors.red),
-                          title: Text('Add Expense'),
+                          leading: const Icon(Icons.remove_circle, color: Colors.red),
+                          title: const Text('Add Expense'),
                           onTap: () {
                             Navigator.pop(context);
-                            Navigator.pushNamed(context, '/add_expense');
+                            Navigator.pushNamed(context, '/add_expense').then((_) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: const Text('Expense added successfully'),
+                                  backgroundColor: Colors.green,
+                                  action: SnackBarAction(
+                                    label: 'OK',
+                                    textColor: Colors.blue,
+                                    onPressed: () {},
+                                  ),
+                                  duration: const Duration(seconds: 3),
+                                ),
+                              );
+                            });
                           },
                         ),
                         ListTile(
-                          leading: Icon(Icons.add_circle, color: Colors.green),
-                          title: Text('Add Income'),
+                          leading: const Icon(Icons.add_circle, color: Colors.green),
+                          title: const Text('Add Income'),
                           onTap: () {
                             Navigator.pop(context);
-                            Navigator.pushNamed(context, '/add_income');
+                            Navigator.pushNamed(context, '/add_income').then((_) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: const Text('Income added successfully'),
+                                  backgroundColor: Colors.green,
+                                  action: SnackBarAction(
+                                    label: 'OK',
+                                    textColor: Colors.blue,
+                                    onPressed: () {},
+                                  ),
+                                  duration: const Duration(seconds: 3),
+                                ),
+                              );
+                            });
                           },
                         ),
                       ],
@@ -70,7 +122,8 @@ class _TransactionsScreenState extends State<TransactionsScreen>{
                 },
               );
             },
-            child: Icon(Icons.add),
+            tooltip: 'Add Transaction',
+            child: const Icon(Icons.add),
           ),
           bottomNavigationBar: _buildBottomNavigationBar(),
         ),
@@ -78,7 +131,6 @@ class _TransactionsScreenState extends State<TransactionsScreen>{
     );
   }
 
-  // ========== Bottom Navigation ==========
   BottomNavigationBar _buildBottomNavigationBar() {
     return BottomNavigationBar(
       currentIndex: _currentIndex,
@@ -95,7 +147,6 @@ class _TransactionsScreenState extends State<TransactionsScreen>{
     );
   }
 
-  // ========== Navigation Methods ==========
   void _handleBottomNavigationTap(int index) {
     if (index == 0) {
       Navigator.pushReplacementNamed(context, '/home');

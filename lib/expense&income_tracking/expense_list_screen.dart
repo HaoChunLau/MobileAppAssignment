@@ -1,14 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:mobile_app_assignment/utils/category_utils.dart';
 import 'package:mobile_app_assignment/models/transaction_model.dart';
 import 'package:mobile_app_assignment/models/budget_model.dart';
-import 'package:month_picker_dialog/month_picker_dialog.dart';
 
 class ExpenseListScreen extends StatefulWidget {
-  const ExpenseListScreen({super.key});
+  final DateTime selectedDate;
+
+  const ExpenseListScreen({super.key, required this.selectedDate});
 
   @override
   ExpenseListScreenState createState() => ExpenseListScreenState();
@@ -19,7 +21,6 @@ class ExpenseListScreenState extends State<ExpenseListScreen> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   bool _isLoading = true;
   late Query _query;
-  DateTime _selectedDate = DateTime.now();
   _FilterOptions _filterOptions = _FilterOptions();
 
   @override
@@ -35,23 +36,36 @@ class ExpenseListScreenState extends State<ExpenseListScreen> {
     });
   }
 
+  @override
+  void didUpdateWidget(ExpenseListScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.selectedDate != widget.selectedDate) {
+      _initializeQuery();
+    }
+  }
+
   void _initializeQuery() {
     final userId = _auth.currentUser?.uid;
     if (userId == null) {
       setState(() {
-        _query = _firestore.collection('transactions').where('userId', isEqualTo: '');
+        _query = _firestore
+            .collection('transactions')
+            .where('userId', isEqualTo: '');
       });
       return;
     }
 
-    final firstDayOfMonth = DateTime(_selectedDate.year, _selectedDate.month, 1);
-    final lastDayOfMonth = DateTime(_selectedDate.year, _selectedDate.month + 1, 0);
+    final firstDayOfMonth =
+        DateTime(widget.selectedDate.year, widget.selectedDate.month, 1);
+    final lastDayOfMonth =
+        DateTime(widget.selectedDate.year, widget.selectedDate.month + 1, 0);
 
     Query query = _firestore
         .collection('transactions')
         .where('userId', isEqualTo: userId)
         .where('isExpense', isEqualTo: true)
-        .where('date', isGreaterThanOrEqualTo: Timestamp.fromDate(firstDayOfMonth))
+        .where('date',
+            isGreaterThanOrEqualTo: Timestamp.fromDate(firstDayOfMonth))
         .where('date', isLessThanOrEqualTo: Timestamp.fromDate(lastDayOfMonth));
 
     if (_filterOptions.category != null) {
@@ -62,22 +76,6 @@ class ExpenseListScreenState extends State<ExpenseListScreen> {
     setState(() {
       _query = query;
     });
-  }
-
-  Future<void> _selectMonth(BuildContext context) async {
-    final DateTime? picked = await showMonthPicker(
-      context: context,
-      initialDate: _selectedDate,
-      firstDate: DateTime(2000),
-      lastDate: DateTime(2101),
-    );
-
-    if (picked != null && picked != _selectedDate) {
-      setState(() {
-        _selectedDate = picked;
-        _initializeQuery();
-      });
-    }
   }
 
   void _showFilterDialog() {
@@ -111,23 +109,25 @@ class ExpenseListScreenState extends State<ExpenseListScreen> {
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12.0),
-                      borderSide: const BorderSide(color: Colors.blue, width: 2.0),
+                      borderSide:
+                          const BorderSide(color: Colors.blue, width: 2.0),
                     ),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16.0, vertical: 12.0),
                   ),
                   items: [
-                    const DropdownMenuItem<String?>(value: null, child: Text('All Categories')),
-                    ...CategoryUtils.expenseCategories.map((category) => DropdownMenuItem<String>(
-                      value: category,
-                      child: Text(category),
-                    )),
+                    const DropdownMenuItem<String?>(
+                        value: null, child: Text('All Categories')),
+                    ...CategoryUtils.expenseCategories
+                        .map((category) => DropdownMenuItem<String>(
+                              value: category,
+                              child: Text(category),
+                            )),
                   ],
                   onChanged: (value) {
-                    setState(() {
-                      tempFilters.category = value;
-                    });
+                    tempFilters.category = value;
                   },
-                  isExpanded: true, // Ensure dropdown takes full width
+                  isExpanded: true,
                 ),
               ],
             ),
@@ -136,7 +136,7 @@ class ExpenseListScreenState extends State<ExpenseListScreen> {
             TextButton(
               onPressed: () {
                 setState(() {
-                  _filterOptions = _FilterOptions(); // Reset filters
+                  _filterOptions = _FilterOptions();
                   _initializeQuery();
                 });
                 Navigator.pop(context);
@@ -163,13 +163,10 @@ class ExpenseListScreenState extends State<ExpenseListScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Expenses - ${DateFormat('MMM yyyy').format(_selectedDate)}'),
+        title: Text(
+            'Expenses - ${DateFormat('MMM yyyy').format(widget.selectedDate)}'),
         automaticallyImplyLeading: false,
         actions: [
-          IconButton(
-            icon: const Icon(Icons.calendar_today),
-            onPressed: () => _selectMonth(context),
-          ),
           IconButton(
             icon: const Icon(Icons.filter_list),
             onPressed: _showFilterDialog,
@@ -183,39 +180,37 @@ class ExpenseListScreenState extends State<ExpenseListScreen> {
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator())
                 : StreamBuilder<QuerySnapshot>(
-              stream: _query.snapshots(),
-              builder: (context, snapshot) {
-                if (snapshot.hasError) {
-                  return Center(child: Text('Error: ${snapshot.error}'));
-                }
+                    stream: _query.snapshots(),
+                    builder: (context, snapshot) {
+                      if (snapshot.hasError) {
+                        return Center(child: Text('Error: ${snapshot.error}'));
+                      }
 
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
 
-                if (snapshot.data?.docs.isEmpty ?? true) {
-                  return _buildEmptyState();
-                }
+                      if (snapshot.data?.docs.isEmpty ?? true) {
+                        return _buildEmptyState();
+                      }
 
-                return ListView.builder(
-                  itemCount: snapshot.data?.docs.length,
-                  itemBuilder: (context, index) {
-                    final doc = snapshot.data?.docs[index];
-                    final transaction = TransactionModel.fromFirestore(doc!);
-                    return _buildExpenseItem(transaction, doc.id);
-                  },
-                );
-              },
-            ),
+                      return ListView.builder(
+                        itemCount: snapshot.data?.docs.length,
+                        itemBuilder: (context, index) {
+                          final doc = snapshot.data?.docs[index];
+                          final transaction =
+                              TransactionModel.fromFirestore(doc!);
+                          return AnimatedOpacity(
+                            opacity: 1.0,
+                            duration: const Duration(milliseconds: 300),
+                            child: _buildExpenseItem(transaction, doc.id),
+                          );
+                        },
+                      );
+                    },
+                  ),
           ),
         ],
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          Navigator.pushNamed(context, '/add_expense');
-        },
-        tooltip: 'Add Expense',
-        child: const Icon(Icons.add),
       ),
     );
   }
@@ -229,6 +224,7 @@ class ExpenseListScreenState extends State<ExpenseListScreen> {
             Icons.account_balance_wallet,
             size: 80,
             color: Colors.grey,
+            semanticLabel: 'No expenses icon',
           ),
           const SizedBox(height: 16),
           const Text(
@@ -243,6 +239,19 @@ class ExpenseListScreenState extends State<ExpenseListScreen> {
             'Tap the + button to add your first expense',
             style: TextStyle(
               color: Colors.grey[600],
+            ),
+          ),
+          const SizedBox(height: 16),
+          ElevatedButton.icon(
+            onPressed: () => Navigator.pushNamed(context, '/add_expense'),
+            icon: const Icon(Icons.add),
+            label: const Text('Add Expense'),
+            style: ElevatedButton.styleFrom(
+              foregroundColor: Colors.white,
+              backgroundColor: Colors.blue,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
             ),
           ),
         ],
@@ -260,6 +269,7 @@ class ExpenseListScreenState extends State<ExpenseListScreen> {
             CategoryUtils.getCategoryIcon(transaction.category),
             color: Colors.white,
             size: 20,
+            semanticLabel: '${transaction.category} icon',
           ),
         ),
         title: Text(transaction.title),
@@ -363,14 +373,13 @@ class ExpenseListScreenState extends State<ExpenseListScreen> {
         throw Exception('User not logged in');
       }
 
-      // Fetch the transaction data before deletion for undo
-      final docSnapshot = await _firestore.collection('transactions').doc(docId).get();
+      final docSnapshot =
+          await _firestore.collection('transactions').doc(docId).get();
       if (!docSnapshot.exists) {
         throw Exception('Transaction not found');
       }
       final deletedTransaction = docSnapshot.data()!;
 
-      // Delete the transaction from Firestore
       await _firestore.collection('transactions').doc(docId).delete();
 
       if (budgetId != null) {
@@ -379,16 +388,20 @@ class ExpenseListScreenState extends State<ExpenseListScreen> {
 
       if (!mounted) return;
 
-      // Show snackbar with undo option
+      HapticFeedback.lightImpact();
       final snackBar = SnackBar(
         content: const Text('Expense deleted successfully'),
+        backgroundColor: Colors.green,
         action: SnackBarAction(
           label: 'Undo',
+          textColor: Colors.purple,
           onPressed: () async {
-            // Restore the transaction
-            await _firestore.collection('transactions').doc(docId).set(deletedTransaction);
+            await _firestore
+                .collection('transactions')
+                .doc(docId)
+                .set(deletedTransaction);
             if (budgetId != null) {
-              await _updateBudgetCurrentSpent(budgetId); // Recompute budget
+              await _updateBudgetCurrentSpent(budgetId);
             }
           },
         ),
@@ -398,7 +411,15 @@ class ExpenseListScreenState extends State<ExpenseListScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error deleting expense: ${e.toString()}')),
+        SnackBar(
+          content: Text('Error deleting expense: $e'),
+          backgroundColor: Colors.red,
+          action: SnackBarAction(
+            label: 'OK',
+            textColor: Colors.blue,
+            onPressed: () {},
+          ),
+        ),
       );
     } finally {
       if (mounted) {
@@ -410,7 +431,8 @@ class ExpenseListScreenState extends State<ExpenseListScreen> {
   }
 
   Future<void> _updateBudgetCurrentSpent(String budgetId) async {
-    final budgetDoc = await _firestore.collection('budgets').doc(budgetId).get();
+    final budgetDoc =
+        await _firestore.collection('budgets').doc(budgetId).get();
     if (!budgetDoc.exists) return;
 
     final budget = BudgetModel.fromFirestore(budgetDoc);
@@ -420,7 +442,8 @@ class ExpenseListScreenState extends State<ExpenseListScreen> {
         .where('userId', isEqualTo: _auth.currentUser?.uid)
         .where('budgetId', isEqualTo: budgetId)
         .where('isExpense', isEqualTo: true)
-        .where('date', isGreaterThanOrEqualTo: Timestamp.fromDate(budget.startDate))
+        .where('date',
+            isGreaterThanOrEqualTo: Timestamp.fromDate(budget.startDate))
         .where('date', isLessThanOrEqualTo: Timestamp.fromDate(budget.endDate))
         .get();
 
@@ -437,9 +460,13 @@ class ExpenseListScreenState extends State<ExpenseListScreen> {
 
   String _formatDate(DateTime date) {
     final now = DateTime.now();
-    if (date.year == now.year && date.month == now.month && date.day == now.day) {
+    if (date.year == now.year &&
+        date.month == now.month &&
+        date.day == now.day) {
       return 'Today';
-    } else if (date.year == now.year && date.month == now.month && date.day == now.day - 1) {
+    } else if (date.year == now.year &&
+        date.month == now.month &&
+        date.day == now.day - 1) {
       return 'Yesterday';
     } else {
       return DateFormat('dd/MM/yyyy').format(date);

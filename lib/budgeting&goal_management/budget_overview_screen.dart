@@ -986,7 +986,7 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
     final sortedBudgets = SortingUtils.sortBudgets(
       budgets: budgets,
       options: _sortingOptions,
-      spentPerCategory: spentPerBudget,
+      spentPerBudget: spentPerBudget,
       currentDate: _selectedDate,
     );
 

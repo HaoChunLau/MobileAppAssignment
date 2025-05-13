@@ -30,11 +30,10 @@ class _SavingsGoalAddScreenState extends State<SavingsGoalAddScreen> {
   // Initialize these with null or empty values
   late IconData _selectedIcon;
   late Color _selectedColor;
-  DateTime _endDate = DateTime.now().add(
-      Duration(days: 7)); // Default to weekly
+  DateTime _endDate =
+      DateTime.now().add(Duration(days: 7)); // Default to weekly
   final DateTime _startDate = DateTime.now(); // Default to current date
   DurationCategory _selectedDuration = DurationCategory.weekly;
-  final bool _isRecurring = false;
 
   @override
   void initState() {
@@ -98,7 +97,7 @@ class _SavingsGoalAddScreenState extends State<SavingsGoalAddScreen> {
           _endDate = _startDate.add(const Duration(days: 7));
           break;
         case DurationCategory.monthly:
-        // Same day next month (e.g., May 8 → June 8)
+          // Same day next month (e.g., May 8 → June 8)
           final nextMonth = _startDate.month + 1;
           final nextYear = _startDate.year + (nextMonth > 12 ? 1 : 0);
           final adjustedMonth = nextMonth > 12 ? nextMonth - 12 : nextMonth;
@@ -117,33 +116,28 @@ class _SavingsGoalAddScreenState extends State<SavingsGoalAddScreen> {
   }
 
   void _updateDurationFromDates() {
-    final daysDifference = _endDate
-        .difference(_startDate)
-        .inDays;
+    final daysDifference = _endDate.difference(_startDate).inDays;
 
     setState(() {
-      if (daysDifference == 0) { // Same day
+      if (daysDifference == 0) {
+        // Same day
         _selectedDuration = DurationCategory.daily;
         _endDate = _startDate.add(Duration(days: 1)); // Force to next day
-      }
-      else if (daysDifference == 1) {
+      } else if (daysDifference == 1) {
         _selectedDuration = DurationCategory.daily;
-      }
-      else if (daysDifference == 7) {
+      } else if (daysDifference == 7) {
         _selectedDuration = DurationCategory.weekly;
-      }
-      else if (daysDifference >= 28 && daysDifference <= 31) {
+      } else if (daysDifference >= 28 && daysDifference <= 31) {
         // Check if it's approximately a month
-        final nextMonth = DateTime(
-            _startDate.year, _startDate.month + 1, _startDate.day);
+        final nextMonth =
+            DateTime(_startDate.year, _startDate.month + 1, _startDate.day);
         if (_endDate.day == nextMonth.day) {
           _selectedDuration = DurationCategory.monthly;
         } else {
           _selectedDuration = DurationCategory.custom;
           _customDayController.text = daysDifference.toString();
         }
-      }
-      else {
+      } else {
         _selectedDuration = DurationCategory.custom;
         _customDayController.text = daysDifference.toString();
       }
@@ -156,26 +150,26 @@ class _SavingsGoalAddScreenState extends State<SavingsGoalAddScreen> {
     final userId = _auth.currentUser?.uid;
     if (userId == null) return false;
 
-    // Check if a budget with the same name exists for the same user
+    // Check if a savings goal with the same name exists for the same user
     final sameNameQuery = await _firestore
-        .collection('budgets')
+        .collection('savings')
         .where('userId', isEqualTo: userId)
-        .where('budgetCategory', isEqualTo: _categoryController.text)
-        .where('budgetName', isEqualTo: _savingNameController.text)
+        .where('goalCategory', isEqualTo: _categoryController.text)
+        .where('title', isEqualTo: _savingNameController.text)
         .get();
 
     if (sameNameQuery.docs.isEmpty) {
-      return false; // No budget with same name exists
+      return false; // No savings goal with same name exists
     }
 
     // Check for overlapping time periods
     for (final doc in sameNameQuery.docs) {
-      final existingBudget = doc.data();
-      final existingStart = (existingBudget['startDate'] as Timestamp).toDate();
-      final existingEnd = (existingBudget['endDate'] as Timestamp).toDate();
+      final existingSaving = doc.data();
+      final existingStart = (existingSaving['startDate'] as Timestamp).toDate();
+      final existingEnd = (existingSaving['targetDate'] as Timestamp).toDate();
 
       if (_startDate.isBefore(existingEnd) && _endDate.isAfter(existingStart)) {
-        return true; // Overlapping budget found
+        return true; // Overlapping savings goal found
       }
     }
 
@@ -201,27 +195,32 @@ class _SavingsGoalAddScreenState extends State<SavingsGoalAddScreen> {
         final userId = _auth.currentUser?.uid;
         if (userId == null) return;
 
-        //PASSING DATA TO FIREBASE
-        final savingData = {
-          'savingGoalId': _firestore
-              .collection('savings')
-              .doc()
-              .id,
-          'goalCategory': _categoryController.text,
-          'title': _savingNameController.text,
-          'targetAmount': double.parse(_amountController.text),
-          'remark': _remarkController.text,
-          'duration': _durationController.text,
-          'customDay': _selectedDuration == DurationCategory.custom
+        // Create a new SavingsGoalModel instance
+        final newGoal = SavingsGoalModel(
+          savingGoalId: _firestore.collection('savings').doc().id,
+          title: _savingNameController.text,
+          goalCategory: _categoryController.text,
+          remark: _remarkController.text,
+          duration: _selectedDuration,
+          customDay: _selectedDuration == DurationCategory.custom
               ? int.tryParse(_customDayController.text)
               : null,
-          'startDate': Timestamp.fromDate(_startDate),
-          'targetDate': Timestamp.fromDate(_endDate),
-          'userId': userId,
-          'status': 'active', //default value
-        };
+          achieveDuration: null,
+          status: Status.active,
+          targetAmount: double.parse(_amountController.text),
+          currentSaved: 0.0,
+          startDate: _startDate,
+          targetDate: _endDate,
+          achieveDate: null,
+          userId: userId,
+        );
 
-        await _firestore.collection('savings').add(savingData);
+        // Save to Firestore
+        await _firestore
+            .collection('savings')
+            .doc(newGoal.savingGoalId)
+            .set(newGoal.toMap());
+
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Saving created successfully'),
@@ -229,6 +228,8 @@ class _SavingsGoalAddScreenState extends State<SavingsGoalAddScreen> {
           ),
         );
 
+        // Wait briefly to ensure Firestore syncs
+        await Future.delayed(Duration(milliseconds: 500));
 
         Navigator.pop(context);
       } catch (e) {
@@ -242,9 +243,6 @@ class _SavingsGoalAddScreenState extends State<SavingsGoalAddScreen> {
     }
   }
 
-  //=====================
-  // FORM VALIDATORS
-  //=====================
   String? _savingTitleValidator(String? value) {
     if (value == null || value.isEmpty) return 'Please enter a budget title';
     if (value.length > 20) {
@@ -300,10 +298,6 @@ class _SavingsGoalAddScreenState extends State<SavingsGoalAddScreen> {
     return null;
   }
 
-  //=====================
-  // UI COMPONENTS
-  //=====================
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -341,7 +335,6 @@ class _SavingsGoalAddScreenState extends State<SavingsGoalAddScreen> {
             _buildRemarkField(),
             const SizedBox(height: 32),
             _buildPreview(),
-
           ],
         ),
       ),
@@ -358,50 +351,29 @@ class _SavingsGoalAddScreenState extends State<SavingsGoalAddScreen> {
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(15.0),
             borderSide: BorderSide(
-              color: Theme
-                  .of(context)
-                  .brightness == Brightness.dark
-                  ? Theme
-                  .of(context)
-                  .colorScheme
-                  .onSurface
-                  : Theme
-                  .of(context)
-                  .colorScheme
-                  .primary,
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? Theme.of(context).colorScheme.onSurface
+                  : Theme.of(context).colorScheme.primary,
             ),
           ),
           filled: true,
-          fillColor: Theme
-              .of(context)
-              .brightness == Brightness.dark
-              ? Theme
-              .of(context)
-              .colorScheme
-              .surface
+          fillColor: Theme.of(context).brightness == Brightness.dark
+              ? Theme.of(context).colorScheme.surface
               : Colors.purple[50],
           labelStyle: TextStyle(
-            color: Theme
-                .of(context)
-                .brightness == Brightness.dark
-                ? Theme
-                .of(context)
-                .colorScheme
-                .onSurface
-                : Theme
-                .of(context)
-                .colorScheme
-                .primary,
+            color: Theme.of(context).brightness == Brightness.dark
+                ? Theme.of(context).colorScheme.onSurface
+                : Theme.of(context).colorScheme.primary,
           ),
         ),
         child: DropdownButtonHideUnderline(
           child: DropdownButton<String>(
-            value: SavingCategoryUtils.categories.contains(
-                _categoryController.text)
+            value: SavingCategoryUtils.categories
+                    .contains(_categoryController.text)
                 ? _categoryController.text
                 : (SavingCategoryUtils.categories.isNotEmpty
-                ? SavingCategoryUtils.categories[0]
-                : null),
+                    ? SavingCategoryUtils.categories[0]
+                    : null),
             isExpanded: true,
             borderRadius: BorderRadius.circular(15.0),
             icon: Icon(Icons.arrow_drop_down),
@@ -475,8 +447,8 @@ class _SavingsGoalAddScreenState extends State<SavingsGoalAddScreen> {
             border: const OutlineInputBorder(),
             prefixIcon: const Icon(Icons.calendar_today),
             // Optional prefix
-            suffixIcon: const Icon(
-                Icons.arrow_drop_down), // Optional dropdown hint
+            suffixIcon:
+                const Icon(Icons.arrow_drop_down), // Optional dropdown hint
           ),
           validator: _dueDateValidator,
         ),
@@ -626,22 +598,19 @@ class _SavingsGoalAddScreenState extends State<SavingsGoalAddScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              if (_savingNameController.text != '')...[
+              if (_savingNameController.text != '') ...[
                 Text(
                   _savingNameController.text,
                   style: const TextStyle(
                       fontSize: 16, fontWeight: FontWeight.bold),
                 ),
-              ]
-              else
-                ...[
-                  Text(
-                    'Saving Title',
-                    style: const TextStyle(
-                        fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
-                ],
-
+              ] else ...[
+                Text(
+                  'Saving Title',
+                  style: const TextStyle(
+                      fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+              ],
               const SizedBox(height: 4),
               Text(
                 'Target date: ${DateFormat('MMM dd, yyyy').format(_endDate)}',
@@ -656,7 +625,7 @@ class _SavingsGoalAddScreenState extends State<SavingsGoalAddScreen> {
         Column(
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
-            if(_amountController.text != '')...[
+            if (_amountController.text != '') ...[
               Text(
                 'RM ${_amountController.text}',
                 style: const TextStyle(
@@ -664,17 +633,15 @@ class _SavingsGoalAddScreenState extends State<SavingsGoalAddScreen> {
                   fontWeight: FontWeight.bold,
                 ),
               ),
-            ]
-            else
-              ...[
-                Text(
-                  'RM 0.00',
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
+            ] else ...[
+              Text(
+                'RM 0.00',
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
                 ),
-              ],
+              ),
+            ],
             const SizedBox(height: 4),
             Text(
               '0%',
@@ -730,31 +697,27 @@ class _SavingsGoalAddScreenState extends State<SavingsGoalAddScreen> {
             fontWeight: FontWeight.w500,
           ),
         ),
-        if(_amountController.text != '')...[
+        if (_amountController.text != '') ...[
           Text(
             'Remaining: RM ${_amountController.text}',
             style: const TextStyle(
               fontWeight: FontWeight.w500,
             ),
           ),
-        ]
-        else
-          ...[
-            Text(
-              'Remaining: RM 0.00',
-              style: const TextStyle(
-                fontWeight: FontWeight.w500,
-              ),
+        ] else ...[
+          Text(
+            'Remaining: RM 0.00',
+            style: const TextStyle(
+              fontWeight: FontWeight.w500,
             ),
-          ],
+          ),
+        ],
       ],
     );
   }
 
   Widget _buildSavingButton() {
-    final daysRemaining = _endDate
-        .difference(_startDate)
-        .inDays;
+    final daysRemaining = _endDate.difference(_startDate).inDays;
     final categoryName = _categoryController.text;
     final categoryColor = SavingCategoryUtils.getCategoryColor(categoryName);
 
@@ -764,9 +727,7 @@ class _SavingsGoalAddScreenState extends State<SavingsGoalAddScreen> {
         Text(
           '$daysRemaining days remaining',
           style: TextStyle(
-            color: daysRemaining < 30
-                ? Colors.orange
-                : Colors.grey[600],
+            color: daysRemaining < 30 ? Colors.orange : Colors.grey[600],
           ),
         ),
         Container(
@@ -780,8 +741,7 @@ class _SavingsGoalAddScreenState extends State<SavingsGoalAddScreen> {
                   blurRadius: 2,
                   offset: const Offset(0, 1),
                 )
-              ]
-          ),
+              ]),
           child: const Text(
             'Add Money',
             style: TextStyle(
@@ -796,19 +756,17 @@ class _SavingsGoalAddScreenState extends State<SavingsGoalAddScreen> {
 
   Widget _buildSubmitButton() {
     bool isFormValid = _formKey.currentState?.validate() ?? false;
-    final isDarkMode = Theme
-        .of(context)
-        .brightness == Brightness.dark;
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
 
     return Container(
       decoration: isDarkMode
           ? BoxDecoration(
-        shape: BoxShape.circle,
-        border: Border.all(
-          color: Colors.white, // White border in dark mode
-          width: 2.0,
-        ),
-      )
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: Colors.white, // White border in dark mode
+                width: 2.0,
+              ),
+            )
           : null, // No border in light mode
       child: FloatingActionButton(
         onPressed: isFormValid ? _saveSaving : null,
@@ -816,15 +774,15 @@ class _SavingsGoalAddScreenState extends State<SavingsGoalAddScreen> {
         backgroundColor: isDarkMode
             ? Colors.white // Black background in dark mode
             : isFormValid
-            ? Colors.purple[100] // Purple background when valid in light mode
-            : Colors.grey[300], // Grey background when invalid in light mode
+                ? Colors
+                    .purple[100] // Purple background when valid in light mode
+                : Colors
+                    .grey[300], // Grey background when invalid in light mode
         child: Icon(
           Icons.check,
           color: isDarkMode
               ? Colors.black // White icon in dark mode
-              : Theme
-              .of(context)
-              .primaryColor, // Primary color in light mode
+              : Theme.of(context).primaryColor, // Primary color in light mode
         ),
       ),
     );

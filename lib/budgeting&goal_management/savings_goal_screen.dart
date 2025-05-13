@@ -16,13 +16,8 @@ class SavingsGoalScreen extends StatefulWidget {
 
 class _SavingsGoalScreenState extends State<SavingsGoalScreen> {
   int _currentIndex = 4;
-
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
-
-  // Loading Savings Goals from firestore
-  bool _isLoading = true; // Add this loading state
-  List<SavingsGoalModel> _goals = []; // Initialize as empty list
 
   // Search properties
   final TextEditingController _searchController = TextEditingController();
@@ -30,7 +25,7 @@ class _SavingsGoalScreenState extends State<SavingsGoalScreen> {
   bool _isSearchVisible = false;
   SortingOptions _sortingOptions = const SortingOptions();
 
-  // ========== Filter Properties ==========
+  // Filter Properties
   List<String> _selectedCategories = [];
   double _minAmount = 0;
   double _maxAmount = double.infinity;
@@ -49,7 +44,6 @@ class _SavingsGoalScreenState extends State<SavingsGoalScreen> {
   @override
   void initState() {
     super.initState();
-    _loadGoals();
   }
 
   @override
@@ -81,57 +75,49 @@ class _SavingsGoalScreenState extends State<SavingsGoalScreen> {
     );
   }
 
-  AppBar _buildAppBar(){
+  AppBar _buildAppBar() {
     return AppBar(
       title: const Text('Savings Goals'),
       automaticallyImplyLeading: false,
       actions: [
-        if (!_isLoading)...[
-          PopupMenuButton<String>(
-            icon: Icon(Icons.more_vert),
-            onSelected: (String value) {
-              _handleMenuSelection(value);
-            },
-            itemBuilder: (BuildContext context) => [
-              PopupMenuItem<String>(
-                value: 'search',
-                child: ListTile(
-                  leading: Icon(
-                    /*_isSearchVisible ? Icons.search_off : */ Icons.search,
-                    size: 20,
-                  ),
-                  title: Text(
-                    /*_isSearchVisible ? 'Cancel Searching' : */ 'Search'),
-                  dense: true,
-                ),
+        PopupMenuButton<String>(
+          icon: Icon(Icons.more_vert),
+          onSelected: (String value) {
+            _handleMenuSelection(value);
+          },
+          itemBuilder: (BuildContext context) => [
+            PopupMenuItem<String>(
+              value: 'search',
+              child: ListTile(
+                leading: Icon(Icons.search, size: 20),
+                title: Text('Search'),
+                dense: true,
               ),
-              PopupMenuItem<String>(
-                value: 'sort',
-                child: ListTile(
-                  leading: Icon(Icons.sort, size: 20),
-                  title: Text('Sort by'),
-                  dense: true,
-                ),
+            ),
+            PopupMenuItem<String>(
+              value: 'sort',
+              child: ListTile(
+                leading: Icon(Icons.sort, size: 20),
+                title: Text('Sort by'),
+                dense: true,
               ),
-              PopupMenuItem<String>(
-                value: 'filter',
-                child: ListTile(
-                  leading: Icon(Icons.filter_alt_rounded, size: 20),
-                  title: Text('Filter'),
-                  dense: true,
-                ),
+            ),
+            PopupMenuItem<String>(
+              value: 'filter',
+              child: ListTile(
+                leading: Icon(Icons.filter_alt_rounded, size: 20),
+                title: Text('Filter'),
+                dense: true,
               ),
-            ],
-          ),
-        ],
+            ),
+          ],
+        ),
       ],
     );
   }
 
-  Widget _buildBody(){
-    return _goals.isEmpty
-        ? Center(child: _buildEmptyState()) // Center the empty state
-        : SingleChildScrollView(
+  Widget _buildBody() {
+    return SingleChildScrollView(
       child: Column(
         children: [
           if (_isSearchVisible) _buildSearchContent(context),
@@ -183,7 +169,7 @@ class _SavingsGoalScreenState extends State<SavingsGoalScreen> {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
           .collection('savings')
-          .where('userId', isEqualTo:  _auth.currentUser?.uid)
+          .where('userId', isEqualTo: _auth.currentUser?.uid)
           .snapshots(),
       builder: (context, snapshot) {
         if (snapshot.hasError) return ErrorWidget(snapshot.error!);
@@ -192,17 +178,15 @@ class _SavingsGoalScreenState extends State<SavingsGoalScreen> {
         final docs = snapshot.data?.docs ?? [];
         if (docs.isEmpty) return _buildEmptyState();
 
-        List<SavingsGoalModel> savingsList = (snapshot.data?.docs ?? [])
-            .map((doc) {
-          var goal = SavingsGoalModel.fromFirestore(doc);
-          //goal.updateStatus(currentDate: DateTime.now());
-          return goal;
-        })
+        List<SavingsGoalModel> savingsList = docs
+            .map((doc) => SavingsGoalModel.fromFirestore(doc))
             .where((goal) =>
-        _searchTerm.isEmpty ||
-            goal.title.toLowerCase().contains(_searchTerm.toLowerCase()) ||
-            (goal.remark?.toLowerCase().contains(_searchTerm.toLowerCase()) ?? false)
-        )
+                _searchTerm.isEmpty ||
+                goal.title.toLowerCase().contains(_searchTerm.toLowerCase()) ||
+                (goal.remark
+                        ?.toLowerCase()
+                        .contains(_searchTerm.toLowerCase()) ??
+                    false))
             .toList();
 
         savingsList = _applyFilters(savingsList);
@@ -218,17 +202,16 @@ class _SavingsGoalScreenState extends State<SavingsGoalScreen> {
           physics: const NeverScrollableScrollPhysics(),
           padding: const EdgeInsets.all(16),
           itemCount: sortedSavings.length,
-          itemBuilder: (context, index) =>
-              Padding(
-                padding: const EdgeInsets.only(bottom: 16),
-                child: _buildGoalsItem(sortedSavings[index]),
-              ),
+          itemBuilder: (context, index) => Padding(
+            padding: const EdgeInsets.only(bottom: 16),
+            child: _buildGoalsItem(sortedSavings[index]),
+          ),
         );
       },
     );
   }
 
-  Widget _buildGoalsItem(SavingsGoalModel goal){
+  Widget _buildGoalsItem(SavingsGoalModel goal) {
     final progress = goal.currentSaved / goal.targetAmount;
     final remainingAmount = goal.targetAmount - goal.currentSaved;
 
@@ -241,170 +224,170 @@ class _SavingsGoalScreenState extends State<SavingsGoalScreen> {
     final color = SavingCategoryUtils.getCategoryColor(goal.goalCategory);
     final icon = SavingCategoryUtils.getCategoryIcon(goal.goalCategory);
 
-    return Expanded(
-        child: Card(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-          elevation: 2,
-          child: InkWell(
-            onTap: () {
-              Navigator.pushNamed(context, '/savings_progress', arguments: goal);
-            },
-            borderRadius: BorderRadius.circular(12),
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+    return Card(
+      // Removed Expanded
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+      ),
+      elevation: 2,
+      child: InkWell(
+        onTap: () {
+          Navigator.pushNamed(context, '/savings_progress', arguments: goal);
+        },
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
                 children: [
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: color.withAlpha((0.1 * 255).round()),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Icon(
-                          icon,
-                          size: 24,
-                          color: color,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              goal.title,
-                              style: const TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              'Target date: ${DateFormat('MMM dd, yyyy').format(goal.targetDate)}',
-                              style: TextStyle(
-                                fontSize: 14,
-                                color: Colors.grey[600],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Text(
-                            'RM ${goal.targetAmount.toStringAsFixed(2)}',
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            '${(progress * 100).toInt()}%',
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w500,
-                              color:
-                              progress > 0.7 ? Colors.green : Colors.blue,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  LinearProgressIndicator(
-                    value: progress,
-                    backgroundColor: Colors.grey[200],
-                    valueColor: AlwaysStoppedAnimation<Color>(
-                      progress > 0.7 ? Colors.green : color,
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: color.withAlpha((0.1 * 255).round()),
+                      borderRadius: BorderRadius.circular(10),
                     ),
-                    minHeight: 8,
-                    borderRadius: BorderRadius.circular(4),
+                    child: Icon(
+                      icon,
+                      size: 24,
+                      color: color,
+                    ),
                   ),
-                  const SizedBox(height: 16),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Saved: RM ${goal.currentSaved.toStringAsFixed(2)}',
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                      Text(
-                        'Remaining: RM ${remainingAmount.toStringAsFixed(2)}',
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      if (remainingAmount == 0)
-                        Text('Target Achieve!')
-                      else
-                        if (daysRemaining > 0)
-                          Text(
-                            '$daysRemaining days remaining',
-                            style: TextStyle(
-                              color: daysRemaining < 30
-                                  ? Colors.orange
-                                  : Colors.grey[600],
-                            ),
-                          )
-                        else if (remainingTime.inHours > 0)
-                          Text('$hoursRemaining hours remaining',
-                            style: TextStyle(color: Colors.orange),
-                          )
-                        else if (remainingTime.inMinutes > 0)
-                            Text('$minutesRemaining minutes remaining',
-                              style: TextStyle(color: Colors.orange),
-                            )
-                          else if (remainingTime.inSeconds > 0)
-                              Text('$secondsRemaining seconds remaining',
-                                style: TextStyle(color: Colors.orange),
-                              )
-                            else
-                              Text(
-                                'Goal date passed',
-                                style: TextStyle(
-                                  color: Colors.red[400],
-                                ),
-                              ),
-                      ElevatedButton(
-                        onPressed: () => _showAddContributionDialog(goal),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: color,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 8),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          goal.title,
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
                           ),
                         ),
-                        child: const Text('Add Money'),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Target date: ${DateFormat('MMM dd, yyyy').format(goal.targetDate)}',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        'RM ${goal.targetAmount.toStringAsFixed(2)}',
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '${(progress * 100).toInt()}%',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                          color: progress > 0.7 ? Colors.green : Colors.blue,
+                        ),
                       ),
                     ],
                   ),
                 ],
               ),
-            ),
+              const SizedBox(height: 16),
+              LinearProgressIndicator(
+                value: progress,
+                backgroundColor: Colors.grey[200],
+                valueColor: AlwaysStoppedAnimation<Color>(
+                  progress > 0.7 ? Colors.green : color,
+                ),
+                minHeight: 8,
+                borderRadius: BorderRadius.circular(4),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Saved: RM ${goal.currentSaved.toStringAsFixed(2)}',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  Text(
+                    'Remaining: RM ${remainingAmount.toStringAsFixed(2)}',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  if (remainingAmount == 0)
+                    Text('Target Achieve!')
+                  else if (daysRemaining > 0)
+                    Text(
+                      '$daysRemaining days remaining',
+                      style: TextStyle(
+                        color: daysRemaining < 30
+                            ? Colors.orange
+                            : Colors.grey[600],
+                      ),
+                    )
+                  else if (remainingTime.inHours > 0)
+                    Text(
+                      '$hoursRemaining hours remaining',
+                      style: TextStyle(color: Colors.orange),
+                    )
+                  else if (remainingTime.inMinutes > 0)
+                    Text(
+                      '$minutesRemaining minutes remaining',
+                      style: TextStyle(color: Colors.orange),
+                    )
+                  else if (remainingTime.inSeconds > 0)
+                    Text(
+                      '$secondsRemaining seconds remaining',
+                      style: TextStyle(color: Colors.orange),
+                    )
+                  else
+                    Text(
+                      'Goal date passed',
+                      style: TextStyle(
+                        color: Colors.red[400],
+                      ),
+                    ),
+                  ElevatedButton(
+                    onPressed: () => _showAddContributionDialog(goal),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: color,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 8),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    child: const Text('Add Money'),
+                  ),
+                ],
+              ),
+            ],
           ),
-        )
+        ),
+      ),
     );
   }
 
-  FloatingActionButton _buildAddButton(){
+  FloatingActionButton _buildAddButton() {
     return FloatingActionButton(
       onPressed: _navigateToAddGoalScreen,
       shape: CircleBorder(),
@@ -562,9 +545,7 @@ class _SavingsGoalScreenState extends State<SavingsGoalScreen> {
             borderRadius: BorderRadius.circular(8.0),
           ),
           filled: true,
-          fillColor: Theme
-              .of(context)
-              .scaffoldBackgroundColor,
+          fillColor: Theme.of(context).scaffoldBackgroundColor,
         ),
         onChanged: (value) {
           setState(() {
@@ -576,7 +557,8 @@ class _SavingsGoalScreenState extends State<SavingsGoalScreen> {
   }
 
   // ============ Categories Filter ==============
-  Widget _buildCategoriesFilter(List<String> selected, List<String> all, StateSetter setState){
+  Widget _buildCategoriesFilter(
+      List<String> selected, List<String> all, StateSetter setState) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -589,34 +571,32 @@ class _SavingsGoalScreenState extends State<SavingsGoalScreen> {
     );
   }
 
-  Widget _buildCategoriesDialogTitle(StateSetter catSetState){
+  Widget _buildCategoriesDialogTitle(StateSetter catSetState) {
     return InkWell(
-      onTap: (){
+      onTap: () {
         catSetState(() {
           _expandedSections['categories'] = !_expandedSections['categories']!;
         });
       },
-      child: Row(
-          children: [
-            Text(
-              'Categories',
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 25,
-              ),
-            ),
-            Icon(
-              _expandedSections['categories']!
-                  ? Icons.expand_less
-                  : Icons.expand_more,
-            ),
-          ]
-      ),
+      child: Row(children: [
+        Text(
+          'Categories',
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            fontSize: 25,
+          ),
+        ),
+        Icon(
+          _expandedSections['categories']!
+              ? Icons.expand_less
+              : Icons.expand_more,
+        ),
+      ]),
     );
   }
 
-  Widget _buildCategoriesFilterContent(List<String> allCategories, List<String> selectedCategories, StateSetter catSetState){
-
+  Widget _buildCategoriesFilterContent(List<String> allCategories,
+      List<String> selectedCategories, StateSetter catSetState) {
     return Wrap(
       spacing: 8,
       runSpacing: 8,
@@ -634,7 +614,8 @@ class _SavingsGoalScreenState extends State<SavingsGoalScreen> {
               }
             });
           },
-          selectedColor: SavingCategoryUtils.getCategoryColor(category).withOpacity(0.2),
+          selectedColor:
+              SavingCategoryUtils.getCategoryColor(category).withOpacity(0.2),
           checkmarkColor: SavingCategoryUtils.getCategoryColor(category),
           backgroundColor: Colors.grey[200],
           labelStyle: TextStyle(
@@ -648,12 +629,12 @@ class _SavingsGoalScreenState extends State<SavingsGoalScreen> {
   }
 
   // =============== Amount range ==================
-  Widget _buildAmountRangeFilter(StateSetter setState){
+  Widget _buildAmountRangeFilter(StateSetter setState) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _buildAmountRangeTitle(setState),
-        if (_expandedSections['amount_range']!)...[
+        if (_expandedSections['amount_range']!) ...[
           const SizedBox(height: 8),
           _buildAmountRangeFilterContent(setState),
         ]
@@ -661,33 +642,32 @@ class _SavingsGoalScreenState extends State<SavingsGoalScreen> {
     );
   }
 
-  Widget _buildAmountRangeTitle(StateSetter amtSetState){
+  Widget _buildAmountRangeTitle(StateSetter amtSetState) {
     return InkWell(
-      onTap: (){
+      onTap: () {
         amtSetState(() {
-          _expandedSections['amount_range'] = !_expandedSections['amount_range']!;
+          _expandedSections['amount_range'] =
+              !_expandedSections['amount_range']!;
         });
       },
-      child: Row(
-          children: [
-            Text(
-              'Amount Range',
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 25,
-              ),
-            ),
-            Icon(
-              _expandedSections['amount_range']!
-                  ? Icons.expand_less
-                  : Icons.expand_more,
-            ),
-          ]
-      ),
+      child: Row(children: [
+        Text(
+          'Amount Range',
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            fontSize: 25,
+          ),
+        ),
+        Icon(
+          _expandedSections['amount_range']!
+              ? Icons.expand_less
+              : Icons.expand_more,
+        ),
+      ]),
     );
   }
 
-  Widget _buildAmountRangeFilterContent(StateSetter amtSetState){
+  Widget _buildAmountRangeFilterContent(StateSetter amtSetState) {
     return Column(
       children: [
         TextField(
@@ -746,12 +726,12 @@ class _SavingsGoalScreenState extends State<SavingsGoalScreen> {
   }
 
   // ================ DATE RANGE FILTER ===================
-  Widget _buildDateRangeFilter(StateSetter setState){
+  Widget _buildDateRangeFilter(StateSetter setState) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _buildDateRangeTitle(setState),
-        if (_expandedSections['date_range']!)...[
+        if (_expandedSections['date_range']!) ...[
           const SizedBox(height: 8),
           _buildDateRangeFilterContent(setState),
         ]
@@ -759,29 +739,27 @@ class _SavingsGoalScreenState extends State<SavingsGoalScreen> {
     );
   }
 
-  Widget _buildDateRangeTitle(StateSetter dateSetState){
+  Widget _buildDateRangeTitle(StateSetter dateSetState) {
     return InkWell(
-      onTap: (){
+      onTap: () {
         dateSetState(() {
           _expandedSections['date_range'] = !_expandedSections['date_range']!;
         });
       },
-      child: Row(
-          children: [
-            Text(
-              'Date Range',
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 25,
-              ),
-            ),
-            Icon(
-              _expandedSections['date_range']!
-                  ? Icons.expand_less
-                  : Icons.expand_more,
-            ),
-          ]
-      ),
+      child: Row(children: [
+        Text(
+          'Date Range',
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            fontSize: 25,
+          ),
+        ),
+        Icon(
+          _expandedSections['date_range']!
+              ? Icons.expand_less
+              : Icons.expand_more,
+        ),
+      ]),
     );
   }
 
@@ -842,7 +820,7 @@ class _SavingsGoalScreenState extends State<SavingsGoalScreen> {
           },
         ),
         const SizedBox(height: 8),
-        if (_filterStartDate != null || _filterEndDate != null)...[
+        if (_filterStartDate != null || _filterEndDate != null) ...[
           TextButton(
             onPressed: () {
               dateSetState(() {
@@ -859,66 +837,6 @@ class _SavingsGoalScreenState extends State<SavingsGoalScreen> {
         ],
       ],
     );
-  }
-
-  // =============================
-  //    BUSINESS LOGIC
-  // =============================
-
-  Future<void> _loadGoals() async {
-    try {
-      setState(() => _isLoading = true);
-
-      if (_isLoading){
-        _buildLoadingIndicator();
-      }
-
-      final userId = _auth.currentUser?.uid;
-      if (userId == null) return;
-
-      final querySnapshot = await FirebaseFirestore.instance
-          .collection('savings')
-          .where('userId', isEqualTo: _auth.currentUser!.uid)
-          .get();
-
-      final goals = querySnapshot.docs.map((doc) {
-        final data = doc.data();
-        return SavingsGoalModel.fromFirestore(doc);
-      }).toList();
-
-      setState(() {
-        _goals = goals;
-        _isLoading = false;
-      });
-    } catch (e) {
-      setState(() => _isLoading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error loading goals: ${e.toString()}'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
-  }
-
-// Helper method to convert string to IconData
-  IconData _getIconFromString(String iconName) {
-    switch (iconName) {
-      case 'laptop': return Icons.laptop;
-      case 'vacation': return Icons.beach_access;
-      case 'emergency': return Icons.health_and_safety;
-      default: return Icons.savings;
-    }
-  }
-
-// Helper method to convert string to Color
-  Color _getColorFromString(String colorName) {
-    switch (colorName) {
-      case 'blue': return Colors.blue;
-      case 'orange': return Colors.orange;
-      case 'red': return Colors.red;
-      default: return Colors.blue;
-    }
   }
 
   // ========= Popup Windows for more action ========
@@ -975,8 +893,10 @@ class _SavingsGoalScreenState extends State<SavingsGoalScreen> {
     final allCategories = SavingCategoryUtils.categories;
 
     // Clear controllers and set initial values
-    _minAmountController.text = _minAmount > 0 ? _minAmount.toStringAsFixed(2) : '';
-    _maxAmountController.text = _maxAmount < double.infinity ? _maxAmount.toStringAsFixed(2) : '';
+    _minAmountController.text =
+        _minAmount > 0 ? _minAmount.toStringAsFixed(2) : '';
+    _maxAmountController.text =
+        _maxAmount < double.infinity ? _maxAmount.toStringAsFixed(2) : '';
     _startDateController.text = _filterStartDate != null
         ? DateFormat('dd/MM/yyyy').format(_filterStartDate!)
         : '';
@@ -999,7 +919,8 @@ class _SavingsGoalScreenState extends State<SavingsGoalScreen> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     // Category Filter
-                    _buildCategoriesFilter(dialogSelectedCategories, allCategories, dialogSetState),
+                    _buildCategoriesFilter(dialogSelectedCategories,
+                        allCategories, dialogSetState),
                     const SizedBox(height: 16),
 
                     // Amount Range Filter
@@ -1036,7 +957,8 @@ class _SavingsGoalScreenState extends State<SavingsGoalScreen> {
                 ),
                 TextButton(
                   onPressed: () {
-                    _validateAmounts(_minAmountController.text, _maxAmountController.text, dialogSetState);
+                    _validateAmounts(_minAmountController.text,
+                        _maxAmountController.text, dialogSetState);
                     _validateDateRange();
 
                     if (_minAmountError == null &&
@@ -1051,8 +973,10 @@ class _SavingsGoalScreenState extends State<SavingsGoalScreen> {
                         _maxAmount = _maxAmountController.text.isEmpty
                             ? double.infinity
                             : double.parse(_maxAmountController.text);
-                        _filterStartDate = DateTime.tryParse(_startDateController.text);
-                        _filterEndDate = DateTime.tryParse(_endDateController.text);
+                        _filterStartDate =
+                            DateTime.tryParse(_startDateController.text);
+                        _filterEndDate =
+                            DateTime.tryParse(_endDateController.text);
                         _isFilterActive = dialogSelectedCategories.isNotEmpty ||
                             _minAmount > 0 ||
                             _maxAmount < double.infinity ||
@@ -1072,7 +996,8 @@ class _SavingsGoalScreenState extends State<SavingsGoalScreen> {
     );
   }
 
-  void _validateAmounts(String minValue, String maxValue, StateSetter amtSetState) {
+  void _validateAmounts(
+      String minValue, String maxValue, StateSetter amtSetState) {
     final min = double.tryParse(minValue);
     final max = double.tryParse(maxValue);
 
@@ -1118,9 +1043,7 @@ class _SavingsGoalScreenState extends State<SavingsGoalScreen> {
     }
 
     // Update the state to show errors
-    amtSetState(() {
-
-    });
+    amtSetState(() {});
   }
 
   void _validateDateRange() {
@@ -1146,15 +1069,18 @@ class _SavingsGoalScreenState extends State<SavingsGoalScreen> {
       }
 
       // Amount range filter
-      if (savings.targetAmount < _minAmount || savings.targetAmount > _maxAmount) {
+      if (savings.targetAmount < _minAmount ||
+          savings.targetAmount > _maxAmount) {
         return false;
       }
 
       // Date range filter
-      if (_filterStartDate != null && savings.targetDate.isBefore(_filterStartDate!)) {
+      if (_filterStartDate != null &&
+          savings.targetDate.isBefore(_filterStartDate!)) {
         return false;
       }
-      if (_filterEndDate != null && savings.startDate.isAfter(_filterEndDate!)) {
+      if (_filterEndDate != null &&
+          savings.startDate.isAfter(_filterEndDate!)) {
         return false;
       }
 
@@ -1186,7 +1112,7 @@ class _SavingsGoalScreenState extends State<SavingsGoalScreen> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      '${(goal.currentSaved/goal.targetAmount*100).toStringAsFixed(1)}% completed',
+                      '${(goal.currentSaved / goal.targetAmount * 100).toStringAsFixed(1)}% completed',
                       style: TextStyle(
                         color: Colors.grey[600],
                         fontWeight: FontWeight.bold,
@@ -1197,14 +1123,14 @@ class _SavingsGoalScreenState extends State<SavingsGoalScreen> {
               ),
               const SizedBox(height: 8),
               LinearProgressIndicator(
-                value: goal.currentSaved/goal.targetAmount,
+                value: goal.currentSaved / goal.targetAmount,
                 backgroundColor: Colors.grey[200],
                 valueColor: AlwaysStoppedAnimation<Color>(color),
               ),
               const SizedBox(height: 16),
               Text(
                 'Saved: RM ${goal.currentSaved.toStringAsFixed(2)} '
-                    'of RM ${goal.targetAmount.toStringAsFixed(2)}',
+                'of RM ${goal.targetAmount.toStringAsFixed(2)}',
                 style: TextStyle(color: Colors.grey[600]),
               ),
               const SizedBox(height: 16),
@@ -1217,7 +1143,8 @@ class _SavingsGoalScreenState extends State<SavingsGoalScreen> {
                   border: OutlineInputBorder(),
                   prefixText: 'RM ',
                 ),
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
                 inputFormatters: [
                   FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,2}')),
                 ],
@@ -1268,10 +1195,16 @@ class _SavingsGoalScreenState extends State<SavingsGoalScreen> {
 
                 try {
                   // Add contribution document
-                  await _firestore.collection('contributions').doc(newContribution.id).set(newContribution.toMap());
+                  await _firestore
+                      .collection('contributions')
+                      .doc(newContribution.id)
+                      .set(newContribution.toMap());
 
                   // Update savings goal document's currentSaved field
-                  await _firestore.collection('savings').doc(goal.savingGoalId).update({
+                  await _firestore
+                      .collection('savings')
+                      .doc(goal.savingGoalId)
+                      .update({
                     'currentSaved': FieldValue.increment(amount),
                     'lastUpdated': FieldValue.serverTimestamp(),
                   });
@@ -1280,7 +1213,8 @@ class _SavingsGoalScreenState extends State<SavingsGoalScreen> {
                   Navigator.pop(context);
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
-                      content: Text('RM ${amount.toStringAsFixed(2)} added to ${goal.title}'),
+                      content: Text(
+                          'RM ${amount.toStringAsFixed(2)} added to ${goal.title}'),
                       backgroundColor: Colors.green,
                     ),
                   );

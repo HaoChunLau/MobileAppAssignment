@@ -65,13 +65,56 @@ class LoginScreenState extends State<LoginScreen> {
       }
     } on FirebaseAuthException catch (e) {
       if (!mounted) return;
+      String errorMessage = 'Unable to log in. Please try again.'; // Default message
+
+      // Map Firebase error codes to user-friendly messages
+      switch (e.code) {
+        case 'invalid-email':
+          errorMessage = 'The email address you entered is not valid.';
+          break;
+        case 'user-not-found':
+          errorMessage = 'No account found with this email.';
+          break;
+        case 'wrong-password':
+          errorMessage = 'Incorrect password. Please try again.';
+          break;
+        case 'invalid-credential':
+          errorMessage = 'Invalid email or password. Please check your details.';
+          break;
+        case 'user-disabled':
+          errorMessage = 'This account has been disabled. Contact support for help.';
+          break;
+        case 'too-many-requests':
+          errorMessage = 'Too many login attempts. Please try again later.';
+          break;
+        case 'network-request-failed':
+          errorMessage = 'Network error. Please check your internet connection.';
+          break;
+        default:
+          errorMessage = 'Login failed: ${e.message}'; // Fallback for unhandled errors
+      }
+
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Login failed: ${e.message}')),
+        SnackBar(
+          content: Text(errorMessage),
+          backgroundColor: Colors.red, // Optional: Make errors more noticeable
+        ),
       );
     } catch (e) {
       if (!mounted) return;
+
+      String errorMessage = 'An unexpected error occurred. Please try again.';
+
+      // Handle specific non-Firebase exceptions if needed
+      if (e.toString().contains('User data not found in Firestore')) {
+        errorMessage = 'Account data not found. Please contact support.';
+      }
+
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: ${e.toString()}')),
+        SnackBar(
+          content: Text(errorMessage),
+          backgroundColor: Colors.red,
+        ),
       );
     } finally {
       if (mounted) {
@@ -180,21 +223,9 @@ class LoginScreenState extends State<LoginScreen> {
             ),
           ),
           obscureText: !_isPasswordVisible,
+          keyboardType: TextInputType.visiblePassword,
         ),
-        SizedBox(height: 8),
-        Row(
-          children: [
-            Checkbox(
-              value: _rememberMe,
-              onChanged: (value) {
-                setState(() {
-                  _rememberMe = value ?? false;
-                });
-              },
-            ),
-            Text('Remember me'),
-          ],
-        ),
+        SizedBox(height: 24),
       ],
     );
   }
@@ -203,21 +234,21 @@ class LoginScreenState extends State<LoginScreen> {
     return _isLoading
         ? Center(child: CircularProgressIndicator())
         : ElevatedButton(
-            onPressed: _handleLogin,
-            style: ElevatedButton.styleFrom(
-              padding: EdgeInsets.symmetric(vertical: 16),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-            child: Text(
-              'Login',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          );
+      onPressed: _handleLogin,
+      style: ElevatedButton.styleFrom(
+        padding: EdgeInsets.symmetric(vertical: 16),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+      ),
+      child: Text(
+        'Login',
+        style: TextStyle(
+          fontSize: 16,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+    );
   }
 
   Widget _buildForgotPassword() {

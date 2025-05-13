@@ -1,4 +1,3 @@
-import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -115,27 +114,6 @@ class _BudgetAddScreenState extends State<BudgetAddScreen> {
     _dueDateController.text = DateFormat('MMM dd, yyyy').format(_endDate);
   }
 
-  DateTime _calculateNextOccurrence() {
-    switch (_selectedDuration) {
-      case DurationCategory.daily:
-        return _endDate.add(const Duration(days: 1));
-      case DurationCategory.weekly:
-        return _endDate.add(const Duration(days: 7));
-      case DurationCategory.monthly:
-        final nextMonth = _endDate.month + 1;
-        final nextYear = _endDate.year + (nextMonth > 12 ? 1 : 0);
-        final adjustedMonth = nextMonth > 12 ? nextMonth - 12 : nextMonth;
-        return DateTime(
-          nextYear,
-          adjustedMonth,
-          min(_endDate.day, DateUtils.getDaysInMonth(nextYear, adjustedMonth)),
-        );
-      case DurationCategory.custom:
-        final days = int.tryParse(_customDayController.text) ?? 0;
-        return _endDate.add(Duration(days: days));
-    }
-  }
-
   void _updateDurationFromDates() {
     final daysDifference = _endDate.difference(_startDate).inDays;
 
@@ -236,7 +214,6 @@ class _BudgetAddScreenState extends State<BudgetAddScreen> {
           'endDate': Timestamp.fromDate(normalizedEndDate),
           'userId': userId,
           'status': 'active',
-          'nextOccurrence': _calculateNextOccurrence(),
         };
 
         await _firestore.collection('budgets').add(budgetData);
@@ -261,8 +238,9 @@ class _BudgetAddScreenState extends State<BudgetAddScreen> {
 
   String? _budgetTitleValidator(String? value) {
     if (value == null || value.isEmpty) return 'Please enter a budget title';
-    if (value.length > 20)
+    if (value.length > 20) {
       return 'We only accept 20 characters. Please try again';
+    }
     return null;
   }
 
@@ -281,8 +259,9 @@ class _BudgetAddScreenState extends State<BudgetAddScreen> {
   String? _amountValidator(String? value) {
     if (value == null || value.isEmpty) return 'Please enter a budget amount';
     final amount = double.tryParse(value);
-    if (amount == null || amount <= 0)
+    if (amount == null || amount <= 0) {
       return 'Please enter a valid positive amount';
+    }
     return null;
   }
 
@@ -591,22 +570,14 @@ class _BudgetAddScreenState extends State<BudgetAddScreen> {
       children: [
         _buildCategoryIcon(),
         const SizedBox(width: 12),
-        Text(
-          _categoryController.text.isNotEmpty
-              ? _categoryController.text
-              : 'Category Name',
-          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-        ),
-        const SizedBox(width: 9),
-        if (_budgetNameController.text.isNotEmpty)
-          Text(
-            '-',
+        Flexible(
+          child: Text(
+            _budgetNameController.text.isNotEmpty
+                ? _budgetNameController.text
+                : 'Budget Name',
             style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            overflow: TextOverflow.ellipsis,
           ),
-        const SizedBox(width: 9),
-        Text(
-          _budgetNameController.text,
-          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
         ),
       ],
     );

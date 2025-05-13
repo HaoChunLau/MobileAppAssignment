@@ -45,7 +45,7 @@ class EditExpenseScreenState extends State<EditExpenseScreen> {
     _fetchBudgets(); // Fetch budgets when screen loads
   }
 
-  // Fetch active budgets from Firestore
+  // Fetch active and failed budgets from Firestore
   void _fetchBudgets() async {
     try {
       final user = _auth.currentUser!;
@@ -236,8 +236,7 @@ class EditExpenseScreenState extends State<EditExpenseScreen> {
                             if (newValue != null && mounted) {
                               setState(() {
                                 _selectedCategory = newValue;
-                                // Reset budget selection if category changes
-                                _selectedBudgetId = null;
+                                _selectedBudgetId = null; // Reset budget selection
                               });
                             }
                           },
@@ -246,7 +245,7 @@ class EditExpenseScreenState extends State<EditExpenseScreen> {
                     ),
                     SizedBox(height: 16),
 
-                    // Budget dropdown (filtered by category)
+                    // Budget dropdown (filtered by category and date range)
                     InputDecorator(
                       decoration: InputDecoration(
                         labelText: 'Budget (Optional)',
@@ -264,7 +263,11 @@ class EditExpenseScreenState extends State<EditExpenseScreen> {
                             ),
                             ..._budgets
                                 .where((budget) =>
-                                    budget.budgetCategory == _selectedCategory)
+                                    budget.budgetCategory == _selectedCategory &&
+                                    _selectedDate.isAfter(budget.startDate
+                                        .subtract(Duration(seconds: 1))) &&
+                                    _selectedDate.isBefore(
+                                        budget.endDate.add(Duration(seconds: 1))))
                                 .map((BudgetModel budget) {
                               return DropdownMenuItem<String?>(
                                 value: budget.budgetId,
@@ -371,6 +374,7 @@ class EditExpenseScreenState extends State<EditExpenseScreen> {
       if (mounted) {
         setState(() {
           _selectedDate = pickedDate;
+          _selectedBudgetId = null; // Reset budget on date change
         });
       }
     }
@@ -378,7 +382,7 @@ class EditExpenseScreenState extends State<EditExpenseScreen> {
 
   void _updateExpense() async {
     if (_formKey.currentState!.validate()) {
-      // Validate budget category match
+      // Validate budget category and date range
       if (_selectedBudgetId != null) {
         final selectedBudget = _budgets
             .firstWhere((budget) => budget.budgetId == _selectedBudgetId);
@@ -387,6 +391,19 @@ class EditExpenseScreenState extends State<EditExpenseScreen> {
             SnackBar(
               content: Text(
                 'Expense category must match budget category (${selectedBudget.budgetCategory})',
+              ),
+            ),
+          );
+          return;
+        }
+        if (!_selectedDate
+                .isAfter(selectedBudget.startDate.subtract(Duration(seconds: 1))) ||
+            !_selectedDate
+                .isBefore(selectedBudget.endDate.add(Duration(seconds: 1)))) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Expense date must be within the budget\'s date range (${DateFormat('dd/MM/yyyy').format(selectedBudget.startDate)} - ${DateFormat('dd/MM/yyyy').format(selectedBudget.endDate)})',
               ),
             ),
           );

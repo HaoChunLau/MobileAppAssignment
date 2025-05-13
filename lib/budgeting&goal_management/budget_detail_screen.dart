@@ -38,7 +38,6 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
   final DateTime _selectedDate = DateTime.now();
   String _status = '';
   late DurationCategory _selectedDuration;
-  bool _isRecurring = false;
   bool _isDeleting = false;
   bool _hasLoadedArguments = false;
 
@@ -440,13 +439,6 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
 
   AppBar _buildAppBar() {
     return AppBar(
-      title: Row(
-        children: [
-          _buildBudgetName(),
-          const SizedBox(width: 8),
-          _buildIsRecurring(),
-        ],
-      ),
       actions: [
         PopupMenuButton<String>(
           icon: Icon(Icons.more_vert),
@@ -710,24 +702,6 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
       budgetName,
       style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
     );
-  }
-
-  Widget _buildIsRecurring() {
-    if (_isRecurring) {
-      return Container(
-        margin: const EdgeInsets.only(right: 12), // optional spacing
-        padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(
-          color: Colors.purple.shade100, // background color
-          shape: BoxShape.circle,
-        ),
-        child: const Icon(
-          Icons.repeat,
-          color: Colors.purple, // icon color
-        ),
-      );
-    }
-    return SizedBox.shrink();
   }
 
   Widget _buildCategoryNameField() {

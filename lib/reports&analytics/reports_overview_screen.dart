@@ -132,7 +132,7 @@ class _ReportsOverviewScreenState extends State<ReportsOverviewScreen> {
                       _buildSummaryItem(
                           'Expense', 'RM ${_expense.toStringAsFixed(2)}', Colors.red),
                       _buildSummaryItem(
-                          'Savings', 'RM ${_savings.toStringAsFixed(2)}', Colors.blue),
+                          'Net Cash Flow', 'RM ${_savings.toStringAsFixed(2)}', Colors.blue),
                     ],
                   ),
                   SizedBox(height: 16),

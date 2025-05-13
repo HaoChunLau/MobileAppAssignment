@@ -24,15 +24,18 @@ class SignUpScreenState extends State<SignUpScreen> {
   bool _isPasswordVisible = false;
   bool _isConfirmPasswordVisible = false;
   bool _agreeToTerms = false;
-  bool _isLoading = false; // Added loading state
+  bool _isLoading = false;
+  double _passwordStrength = 0.0;
 
-  bool _isPasswordValid(String password) {
-    final specialCharRegex = RegExp(r'[!@#$%^&*=\-+?\\|<>,.~`]');
-    final uppercaseRegex = RegExp(r'[A-Z]');
-
-    return password.length >= 8 &&
-        specialCharRegex.hasMatch(password) &&
-        uppercaseRegex.hasMatch(password);
+  void _updatePasswordStrength(String password) {
+    double strength = 0.0;
+    if (password.length >= 8) strength += 0.25;
+    if (password.contains(RegExp(r'[A-Z]'))) strength += 0.25;
+    if (password.contains(RegExp(r'[0-9]'))) strength += 0.25;
+    if (password.contains(RegExp(r'[!@#$%^&*(),.?":{}|<>]'))) strength += 0.25;
+    setState(() {
+      _passwordStrength = strength;
+    });
   }
 
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -67,25 +70,35 @@ class SignUpScreenState extends State<SignUpScreen> {
     setState(() => _isLoading = true);
 
     try {
-      // Create user with email and password directly
-      final UserCredential userCredential = await _auth.createUserWithEmailAndPassword(
+      final signInMethods =
+          await _auth.fetchSignInMethodsForEmail(_emailController.text.trim());
+      if (signInMethods.isNotEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text(
+                  'This email is already registered. Please use a different email or log in.')),
+        );
+        setState(() => _isLoading = false);
+        return;
+      }
+
+      final UserCredential userCredential =
+          await _auth.createUserWithEmailAndPassword(
         email: _emailController.text.trim(),
         password: _passwordController.text,
       );
 
-      // Send verification email using Firebase Authentication's built-in method
       await userCredential.user!.sendEmailVerification();
 
-      // Show success message
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Account created! Please check your email for verification link.'),
+          content: Text(
+              'Account created! Please check your email for verification link.'),
           backgroundColor: Colors.green,
         ),
       );
 
-      // Navigate to verification instructions screen
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
@@ -99,15 +112,9 @@ class SignUpScreenState extends State<SignUpScreen> {
       );
     } on FirebaseAuthException catch (e) {
       if (!mounted) return;
-      if (e.code == 'email-already-in-use') {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('This email is already registered. Please use a different email or log in.')),
-        );
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Signup failed: ${e.message}')),
-        );
-      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Signup failed: ${e.message}')),
+      );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -120,14 +127,11 @@ class SignUpScreenState extends State<SignUpScreen> {
     }
   }
 
-  // This function will be called when email verification is complete
   Future<void> _onVerificationComplete() async {
     try {
-      // Get the current user
       final User? user = _auth.currentUser;
 
       if (user != null) {
-        // Now that the user is verified, save their data to Firestore
         final UserModel userModel = UserModel(
           id: user.uid,
           email: user.email ?? _emailController.text.trim(),
@@ -138,7 +142,10 @@ class SignUpScreenState extends State<SignUpScreen> {
           emailVerified: true,
         );
 
-        await _firestore.collection('users').doc(user.uid).set(userModel.toMap());
+        await _firestore
+            .collection('users')
+            .doc(user.uid)
+            .set(userModel.toMap());
       }
     } catch (e) {
       print('Error saving user data: $e');
@@ -151,7 +158,8 @@ class SignUpScreenState extends State<SignUpScreen> {
       return false;
     }
 
-    if (_emailController.text.trim().isEmpty || !EmailValidator.validate(_emailController.text.trim())) {
+    if (_emailController.text.trim().isEmpty ||
+        !EmailValidator.validate(_emailController.text.trim())) {
       _showError('Please enter a valid email address');
       return false;
     }
@@ -163,13 +171,16 @@ class SignUpScreenState extends State<SignUpScreen> {
       return false;
     }
 
-    if (!_isPasswordValid(_passwordController.text)) {
-      _showError(
-        'Password must be at least 8 characters, include one uppercase letter, and one special character (!@#\$%^&*=-+?\\|<>,.~`)',
-      );
+    if (_passwordController.text.length < 8) {
+      _showError('Password must be at least 8 characters');
       return false;
     }
 
+    if (_passwordStrength != 1.0) {
+      _showError(
+          'Password must be at least 8 characters long, contain an uppercase letter, a number, and a special character');
+      return false;
+    }
 
     return true;
   }
@@ -214,7 +225,7 @@ class SignUpScreenState extends State<SignUpScreen> {
           Icons.account_circle,
           size: 64,
           color: Theme.of(context).brightness == Brightness.dark
-              ? Colors.white // Use white or a light color in dark mode
+              ? Colors.white
               : Theme.of(context).primaryColor,
         ),
         SizedBox(height: 16),
@@ -297,6 +308,8 @@ class SignUpScreenState extends State<SignUpScreen> {
             ),
           ),
           obscureText: !_isPasswordVisible,
+          onChanged: (value) => _updatePasswordStrength(value),
+          keyboardType: TextInputType.visiblePassword,
         ),
         SizedBox(height: 16),
         TextField(
@@ -321,7 +334,71 @@ class SignUpScreenState extends State<SignUpScreen> {
             ),
           ),
           obscureText: !_isConfirmPasswordVisible,
+          keyboardType: TextInputType.visiblePassword,
         ),
+        SizedBox(height: 16),
+        _buildPasswordStrengthIndicator(),
+      ],
+    );
+  }
+
+  Widget _buildPasswordStrengthIndicator() {
+    double strength = _passwordStrength;
+    Color indicatorColor;
+    String strengthText;
+
+    if (strength <= 0.25) {
+      indicatorColor = Colors.red;
+      strengthText = 'Weak';
+    } else if (strength <= 0.5) {
+      indicatorColor = Colors.orange;
+      strengthText = 'Medium';
+    } else if (strength <= 0.75) {
+      indicatorColor = Colors.yellow;
+      strengthText = 'Good';
+    } else {
+      indicatorColor = Colors.green;
+      strengthText = 'Strong';
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Password Strength',
+          style: TextStyle(
+            fontSize: 14,
+            color: Colors.grey[600],
+          ),
+        ),
+        SizedBox(height: 8),
+        LinearProgressIndicator(
+          value: strength,
+          backgroundColor: Colors.grey[200],
+          valueColor: AlwaysStoppedAnimation<Color>(indicatorColor),
+          minHeight: 8,
+          borderRadius: BorderRadius.circular(4),
+        ),
+        SizedBox(height: 8),
+        Text(
+          strengthText,
+          style: TextStyle(
+            color: indicatorColor,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        if (_passwordController.text.isNotEmpty &&
+            _passwordController.text.length < 8)
+          Padding(
+            padding: const EdgeInsets.only(top: 8.0),
+            child: Text(
+              'Password should be at least 8 characters',
+              style: TextStyle(
+                color: Colors.red,
+                fontSize: 12,
+              ),
+            ),
+          ),
       ],
     );
   }
@@ -402,7 +479,7 @@ class SignUpScreenState extends State<SignUpScreen> {
         Text('Already have an account?'),
         TextButton(
           onPressed: () {
-            Navigator.pop(context); // Go back to login screen
+            Navigator.pop(context);
           },
           child: Text('Login'),
         ),

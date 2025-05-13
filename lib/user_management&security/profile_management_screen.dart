@@ -77,19 +77,48 @@ class ProfileManagementScreenState extends State<ProfileManagementScreen> {
 
       final UserModel user = UserModel.fromFirestore(userDoc);
 
-      setState(() {
-        _nameController.text = user.name ?? '';
-        _emailController.text = currentUser.email ?? user.email;
-        _phoneController.text = user.phoneNumber ?? '';
-        _currency = user.currency ?? 'MYR (RM)';
-        _photoUrl = user.photoUrl;
-        _latitude = user.latitude ?? 3.1390; // Default KL
-        _longitude = user.longitude ?? 101.6869; // Default KL
-        _selectedLocation = (_latitude != null && _longitude != null)
-            ? LatLng(_latitude!, _longitude!)
-            : null;
-        _isLoading = false;
-      });
+      if (user.emailPendingVerification == true &&
+          currentUser.email != null &&
+          currentUser.email != user.email) {
+        // Update Firestore with the new verified email
+        await _firestore.collection('users').doc(currentUser.uid).update({
+          'email': currentUser.email,
+          'emailPendingVerification': false, // Reset the flag
+        });
+        // Refresh userDoc after update
+        final updatedDoc =
+        await _firestore.collection('users').doc(currentUser.uid).get();
+        setState(() {
+          final updatedUser = UserModel.fromFirestore(updatedDoc);
+          _nameController.text = updatedUser.name ?? '';
+          _emailController.text = currentUser.email ?? updatedUser.email;
+          _phoneController.text = updatedUser.phoneNumber ?? '';
+          _currency = updatedUser.currency ?? 'MYR (RM)';
+          _photoUrl = updatedUser.photoUrl;
+          _latitude = updatedUser.latitude ?? 3.1390;
+          _longitude = updatedUser.longitude ?? 101.6869;
+          _selectedLocation = (_latitude != null && _longitude != null)
+              ? LatLng(_latitude!, _longitude!)
+              : null;
+          _isEmailPendingVerification = false;
+          _isLoading = false;
+        });
+      } else {
+        setState(() {
+          _nameController.text = user.name ?? '';
+          _emailController.text = currentUser.email ?? user.email;
+          _phoneController.text = user.phoneNumber ?? '';
+          _currency = user.currency ?? 'MYR (RM)';
+          _photoUrl = user.photoUrl;
+          _latitude = user.latitude ?? 3.1390;
+          _longitude = user.longitude ?? 101.6869;
+          _selectedLocation = (_latitude != null && _longitude != null)
+              ? LatLng(_latitude!, _longitude!)
+              : null;
+          _isEmailPendingVerification = user.emailPendingVerification ?? false;
+          _isLoading = false;
+        });
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -247,6 +276,7 @@ class ProfileManagementScreenState extends State<ProfileManagementScreen> {
                     border: OutlineInputBorder(),
                   ),
                   obscureText: true,
+                  keyboardType: TextInputType.visiblePassword,
                 ),
                 const SizedBox(height: 8),
                 if (isLoading)
@@ -415,40 +445,6 @@ class ProfileManagementScreenState extends State<ProfileManagementScreen> {
         ),
       ),
     );
-  }
-
-  Future<void> _updateFirestoreEmail(String newEmail) async {
-    try {
-      final User? user = _auth.currentUser;
-      if (user == null) return;
-
-      // Update the email in Firestore
-      await _firestore.collection('users').doc(user.uid).update({
-        'email': newEmail,
-        'emailPendingVerification': false,
-      });
-
-      // Update the UI
-      setState(() {
-        _emailController.text = newEmail;
-        _isEmailPendingVerification = false;
-      });
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Email updated successfully'),
-            backgroundColor: Colors.green,
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error updating email in database: ${e.toString()}')),
-        );
-      }
-    }
   }
 
   // ======================== Photo Selection and Upload ========================
@@ -1025,12 +1021,16 @@ class ProfileManagementScreenState extends State<ProfileManagementScreen> {
       child: const Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.logout),
+          Icon(
+            Icons.logout,
+            color: Colors.white,
+          ),
           SizedBox(width: 8),
           Text(
             'Log Out',
             style: TextStyle(
               fontSize: 16,
+              color: Colors.white,
               fontWeight: FontWeight.bold,
             ),
           ),

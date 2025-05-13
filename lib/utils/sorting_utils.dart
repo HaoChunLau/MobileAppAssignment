@@ -9,7 +9,6 @@ enum SortCategory {
   amount,
   date,
   category,
-  progress,
   remainDays,
 }
 
@@ -49,8 +48,6 @@ class SortingUtils {
         return 'Date';
       case SortCategory.category:
         return 'Category';
-      case SortCategory.progress:
-        return 'Progress';
       case SortCategory.remainDays:
         return 'Remaining Days';
     }
@@ -66,8 +63,6 @@ class SortingUtils {
         return Icons.date_range;
       case SortCategory.category:
         return Icons.category;
-      case SortCategory.progress:
-        return Icons.trending_up;
       case SortCategory.remainDays:
         return Icons.timer_sharp;
     }
@@ -76,7 +71,7 @@ class SortingUtils {
   static List<BudgetModel> sortBudgets({
     required List<BudgetModel> budgets,
     required SortingOptions options,
-    required Map<String, double> spentPerCategory,
+    required Map<String, double> spentPerBudget,
     DateTime? currentDate,
   }) {
     final directionMultiplier = options.direction == SortDirection.ascending ? 1 : -1;
@@ -98,12 +93,6 @@ class SortingUtils {
             return (indexA == -1 ? 1 : -1) * directionMultiplier;
           }
           return indexA.compareTo(indexB) * directionMultiplier;
-        case SortCategory.progress:
-          final spentA = spentPerCategory[a.budgetCategory] ?? 0;
-          final spentB = spentPerCategory[b.budgetCategory] ?? 0;
-          final progressA = a.targetAmount > 0 ? spentA / a.targetAmount : 0;
-          final progressB = b.targetAmount > 0 ? spentB / b.targetAmount : 0;
-          return progressA.compareTo(progressB) * directionMultiplier;
         case SortCategory.remainDays:
           final remainingDaysA = a.endDate.difference(today).inDays;
           final remainingDaysB = b.endDate.difference(today).inDays;
@@ -136,12 +125,6 @@ class SortingUtils {
             return (indexA == -1 ? 1 : -1) * directionMultiplier;
           }
           return indexA.compareTo(indexB) * directionMultiplier;
-        case SortCategory.progress:
-          final savedA = a.currentSaved;
-          final savedB = b.currentSaved;
-          final progressA = a.targetAmount > 0 ? savedA / a.targetAmount : 0;
-          final progressB = b.targetAmount > 0 ? savedB / b.targetAmount : 0;
-          return progressA.compareTo(progressB) * directionMultiplier;
         case SortCategory.remainDays:
           final remainingDaysA = a.targetDate.difference(today).inDays;
           final remainingDaysB = b.targetDate.difference(today).inDays;

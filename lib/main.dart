@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:mobile_app_assignment/budgeting&goal_management/budget_detail_screen.dart';
 import 'package:mobile_app_assignment/budgeting&goal_management/budget_overview_screen.dart';
 import 'package:mobile_app_assignment/budgeting&goal_management/budget_add_screen.dart';
@@ -34,12 +35,18 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
+  initializeAuthService();
   runApp(FinanceApp());
 }
 
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+
+  AuthService() {
+    // Set the default language code for Firebase Authentication
+    _auth.setLanguageCode('en-US');
+  }
 
   // Set up a listener to update the user's verification status in Firestore
   void setupEmailVerificationListener() {
@@ -113,17 +120,28 @@ class FinanceAppState extends State<FinanceApp> {
         visualDensity: VisualDensity.adaptivePlatformDensity,
         fontFamily: 'Roboto',
       ),
-      themeMode: _themeMode, // Use the dynamic theme mode
+      themeMode: _themeMode,
+      // Add locale configuration
+      locale: const Locale('en', 'US'), // Default locale
+      supportedLocales: const [
+        Locale('en', 'US'), // English (United States)
+        Locale('ms', 'MY'), // Malay (Malaysia, based on RM currency in your UI)
+      ],
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
       home: AuthenticationWrapper(onThemeChanged: _updateThemeMode),
       routes: {
         '/home': (context) => AuthGuard(child: HomeScreen()),
 
         // Module 1: Expense & Income Tracking
         '/transactions': (context) => AuthGuard(child: TransactionsScreen()),
-        '/expense_list': (context) => AuthGuard(child: ExpenseListScreen()),
+        '/expense_list': (context) => AuthGuard(child: ExpenseListScreen(selectedDate: DateTime.now())),
         '/add_expense': (context) => AuthGuard(child: AddExpenseScreen()),
         '/edit_expense': (context) => AuthGuard(child: EditExpenseScreen()),
-        '/income_list': (context) => AuthGuard(child: IncomeListScreen()),
+        '/income_list': (context) => AuthGuard(child: IncomeListScreen(selectedDate: DateTime.now())),
         '/add_income': (context) => AuthGuard(child: AddIncomeScreen()),
         '/edit_income': (context) => AuthGuard(child: EditIncomeScreen()),
 

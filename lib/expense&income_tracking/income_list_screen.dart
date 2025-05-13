@@ -1,13 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:mobile_app_assignment/models/transaction_model.dart';
 import 'package:mobile_app_assignment/utils/category_utils.dart';
-import 'package:month_picker_dialog/month_picker_dialog.dart';
 
 class IncomeListScreen extends StatefulWidget {
-  const IncomeListScreen({super.key});
+  final DateTime selectedDate;
+
+  const IncomeListScreen({super.key, required this.selectedDate});
 
   @override
   IncomeListScreenState createState() => IncomeListScreenState();
@@ -18,7 +20,6 @@ class IncomeListScreenState extends State<IncomeListScreen> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   bool _isLoading = true;
   late Query _query;
-  DateTime _selectedDate = DateTime.now();
   _FilterOptions _filterOptions = _FilterOptions();
 
   @override
@@ -34,6 +35,14 @@ class IncomeListScreenState extends State<IncomeListScreen> {
     });
   }
 
+  @override
+  void didUpdateWidget(IncomeListScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.selectedDate != widget.selectedDate) {
+      _initializeQuery();
+    }
+  }
+
   void _initializeQuery() {
     final userId = _auth.currentUser?.uid;
     if (userId == null) {
@@ -43,8 +52,8 @@ class IncomeListScreenState extends State<IncomeListScreen> {
       return;
     }
 
-    final firstDayOfMonth = DateTime(_selectedDate.year, _selectedDate.month, 1);
-    final lastDayOfMonth = DateTime(_selectedDate.year, _selectedDate.month + 1, 0);
+    final firstDayOfMonth = DateTime(widget.selectedDate.year, widget.selectedDate.month, 1);
+    final lastDayOfMonth = DateTime(widget.selectedDate.year, widget.selectedDate.month + 1, 0);
 
     Query query = _firestore
         .collection('transactions')
@@ -61,22 +70,6 @@ class IncomeListScreenState extends State<IncomeListScreen> {
     setState(() {
       _query = query;
     });
-  }
-
-  Future<void> _selectMonth(BuildContext context) async {
-    final DateTime? picked = await showMonthPicker(
-      context: context,
-      initialDate: _selectedDate,
-      firstDate: DateTime(2000),
-      lastDate: DateTime(2101),
-    );
-
-    if (picked != null && picked != _selectedDate) {
-      setState(() {
-        _selectedDate = picked;
-        _initializeQuery();
-      });
-    }
   }
 
   void _showFilterDialog() {
@@ -117,16 +110,14 @@ class IncomeListScreenState extends State<IncomeListScreen> {
                   items: [
                     const DropdownMenuItem<String?>(value: null, child: Text('All Categories')),
                     ...CategoryUtils.incomeCategories.map((category) => DropdownMenuItem<String>(
-                      value: category,
-                      child: Text(category),
-                    )),
+                          value: category,
+                          child: Text(category),
+                        )),
                   ],
                   onChanged: (value) {
-                    setState(() {
-                      tempFilters.category = value;
-                    });
+                    tempFilters.category = value;
                   },
-                  isExpanded: true, // Ensure dropdown takes full width
+                  isExpanded: true,
                 ),
               ],
             ),
@@ -135,7 +126,7 @@ class IncomeListScreenState extends State<IncomeListScreen> {
             TextButton(
               onPressed: () {
                 setState(() {
-                  _filterOptions = _FilterOptions(); // Reset filters
+                  _filterOptions = _FilterOptions();
                   _initializeQuery();
                 });
                 Navigator.pop(context);
@@ -162,13 +153,9 @@ class IncomeListScreenState extends State<IncomeListScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Income - ${DateFormat('MMM yyyy').format(_selectedDate)}'),
+        title: Text('Income - ${DateFormat('MMM yyyy').format(widget.selectedDate)}'),
         automaticallyImplyLeading: false,
         actions: [
-          IconButton(
-            icon: const Icon(Icons.calendar_today),
-            onPressed: () => _selectMonth(context),
-          ),
           IconButton(
             icon: const Icon(Icons.filter_list),
             onPressed: _showFilterDialog,
@@ -179,37 +166,34 @@ class IncomeListScreenState extends State<IncomeListScreen> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : StreamBuilder<QuerySnapshot>(
-        stream: _query.snapshots(),
-        builder: (context, snapshot) {
-          if (snapshot.hasError) {
-            return Center(child: Text('Error: ${snapshot.error}'));
-          }
+              stream: _query.snapshots(),
+              builder: (context, snapshot) {
+                if (snapshot.hasError) {
+                  return Center(child: Text('Error: ${snapshot.error}'));
+                }
 
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
 
-          if (snapshot.data?.docs.isEmpty ?? true) {
-            return _buildEmptyState();
-          }
+                if (snapshot.data?.docs.isEmpty ?? true) {
+                  return _buildEmptyState();
+                }
 
-          return ListView.builder(
-            itemCount: snapshot.data?.docs.length,
-            itemBuilder: (context, index) {
-              final doc = snapshot.data?.docs[index];
-              final transaction = TransactionModel.fromFirestore(doc!);
-              return _buildIncomeItem(transaction, doc.id);
-            },
-          );
-        },
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          Navigator.pushNamed(context, '/add_income');
-        },
-        tooltip: 'Add Income',
-        child: const Icon(Icons.add),
-      ),
+                return ListView.builder(
+                  itemCount: snapshot.data?.docs.length,
+                  itemBuilder: (context, index) {
+                    final doc = snapshot.data?.docs[index];
+                    final transaction = TransactionModel.fromFirestore(doc!);
+                    return AnimatedOpacity(
+                      opacity: 1.0,
+                      duration: const Duration(milliseconds: 300),
+                      child: _buildIncomeItem(transaction, doc.id),
+                    );
+                  },
+                );
+              },
+            ),
     );
   }
 
@@ -222,6 +206,7 @@ class IncomeListScreenState extends State<IncomeListScreen> {
             Icons.account_balance_wallet,
             size: 80,
             color: Colors.grey,
+            semanticLabel: 'No income icon',
           ),
           const SizedBox(height: 16),
           const Text(
@@ -236,6 +221,19 @@ class IncomeListScreenState extends State<IncomeListScreen> {
             'Tap the + button to add your first income',
             style: TextStyle(
               color: Colors.grey[600],
+            ),
+          ),
+          const SizedBox(height: 16),
+          ElevatedButton.icon(
+            onPressed: () => Navigator.pushNamed(context, '/add_income'),
+            icon: const Icon(Icons.add),
+            label: const Text('Add Income'),
+            style: ElevatedButton.styleFrom(
+              foregroundColor: Colors.white,
+              backgroundColor: Colors.blue,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
             ),
           ),
         ],
@@ -253,6 +251,7 @@ class IncomeListScreenState extends State<IncomeListScreen> {
             CategoryUtils.getCategoryIcon(transaction.category),
             color: Colors.white,
             size: 20,
+            semanticLabel: '${transaction.category} icon',
           ),
         ),
         title: Text(transaction.title),
@@ -351,25 +350,24 @@ class IncomeListScreenState extends State<IncomeListScreen> {
         _isLoading = true;
       });
 
-      // Fetch the transaction data before deletion for undo
       final docSnapshot = await _firestore.collection('transactions').doc(docId).get();
       if (!docSnapshot.exists) {
         throw Exception('Transaction not found');
       }
       final deletedTransaction = docSnapshot.data()!;
 
-      // Delete the transaction from Firestore
       await _firestore.collection('transactions').doc(docId).delete();
 
       if (!mounted) return;
 
-      // Show snackbar with undo option
+      HapticFeedback.lightImpact();
       final snackBar = SnackBar(
         content: const Text('Income deleted successfully'),
+        backgroundColor: Colors.green,
         action: SnackBarAction(
           label: 'Undo',
+          textColor: Colors.purple,
           onPressed: () async {
-            // Restore the transaction
             await _firestore.collection('transactions').doc(docId).set(deletedTransaction);
           },
         ),
@@ -379,7 +377,15 @@ class IncomeListScreenState extends State<IncomeListScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error deleting income: ${e.toString()}')),
+        SnackBar(
+          content: Text('Error deleting income: $e'),
+          backgroundColor: Colors.red,
+          action: SnackBarAction(
+            label: 'OK',
+            textColor: Colors.blue,
+            onPressed: () {},
+          ),
+        ),
       );
     } finally {
       if (mounted) {
@@ -394,9 +400,7 @@ class IncomeListScreenState extends State<IncomeListScreen> {
     final now = DateTime.now();
     if (date.year == now.year && date.month == now.month && date.day == now.day) {
       return 'Today';
-    } else if (date.year == now.year &&
-        date.month == now.month &&
-        date.day == now.day - 1) {
+    } else if (date.year == now.year && date.month == now.month && date.day == now.day - 1) {
       return 'Yesterday';
     } else {
       return DateFormat('dd/MM/yyyy').format(date);

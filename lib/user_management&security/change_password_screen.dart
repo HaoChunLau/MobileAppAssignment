@@ -117,6 +117,7 @@ class ChangePasswordScreenState extends State<ChangePasswordScreen> {
             ),
           ),
           obscureText: !_isCurrentPasswordVisible,
+          keyboardType: TextInputType.visiblePassword,
         ),
         SizedBox(height: 16),
         TextField(
@@ -139,6 +140,7 @@ class ChangePasswordScreenState extends State<ChangePasswordScreen> {
             ),
           ),
           obscureText: !_isNewPasswordVisible,
+          keyboardType: TextInputType.visiblePassword,
         ),
         SizedBox(height: 16),
         TextField(
@@ -163,6 +165,7 @@ class ChangePasswordScreenState extends State<ChangePasswordScreen> {
             ),
           ),
           obscureText: !_isConfirmPasswordVisible,
+          keyboardType: TextInputType.visiblePassword,
         ),
         SizedBox(height: 16),
         _buildPasswordStrengthIndicator(),

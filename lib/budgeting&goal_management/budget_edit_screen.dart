@@ -1,4 +1,3 @@
-import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -53,13 +52,13 @@ class _BudgetEditScreenState extends State<BudgetEditScreen> {
   }
 
   @override
-void didChangeDependencies() {
-  super.didChangeDependencies();
-  if (!_hasLoadedArguments) {
-    _loadArguments();
-    _hasLoadedArguments = true;
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_hasLoadedArguments) {
+      _loadArguments();
+      _hasLoadedArguments = true;
+    }
   }
-}
 
   void _initializeDefaults() {
     final defaultCategory =
@@ -76,55 +75,55 @@ void didChangeDependencies() {
   }
 
   void _loadArguments() {
-  final arguments = ModalRoute.of(context)?.settings.arguments;
-  if (arguments == null) {
-    setState(() {
-      _errorMessage = 'No budget data provided';
-      _isLoading = false;
-    });
-    return;
-  }
-
-  BudgetModel? budget;
-
-  if (arguments is BudgetModel) {
-    budget = arguments;
-  } else if (arguments is Map<String, dynamic>) {
-    budget = arguments['budget'] as BudgetModel?;
-  }
-
-  if (budget == null) {
-    setState(() {
-      _errorMessage = 'No budget data provided';
-      _isLoading = false;
-    });
-    return;
-  }
-
-  setState(() {
-    _status = budget!.status.name;
-
-    _editingBudget = budget;
-    _categoryController.text = budget.budgetCategory;
-    _budgetNameController.text = budget.budgetName;
-    _amountController.text = budget.targetAmount.toStringAsFixed(2);
-    _remarkController.text = budget.remark ?? '';
-    _selectedIcon = CategoryUtils.getCategoryIcon(budget.budgetCategory);
-    _selectedColor = CategoryUtils.getCategoryColor(budget.budgetCategory);
-    _startDate = budget.startDate;
-    _endDate = budget.endDate;
-    _selectedDuration = budget.duration;
-
-    _dueDateController.text = DateFormat('MMM dd, yyyy').format(budget.endDate);
-
-    if (budget.duration == DurationCategory.custom) {
-      _customDayController.text = budget.customDays?.toString() ??
-          budget.endDate.difference(budget.startDate).inDays.toString();
+    final arguments = ModalRoute.of(context)?.settings.arguments;
+    if (arguments == null) {
+      setState(() {
+        _errorMessage = 'No budget data provided';
+        _isLoading = false;
+      });
+      return;
     }
 
-    _isLoading = false;
-  });
-}
+    BudgetModel? budget;
+
+    if (arguments is BudgetModel) {
+      budget = arguments;
+    } else if (arguments is Map<String, dynamic>) {
+      budget = arguments['budget'] as BudgetModel?;
+    }
+
+    if (budget == null) {
+      setState(() {
+        _errorMessage = 'No budget data provided';
+        _isLoading = false;
+      });
+      return;
+    }
+
+    setState(() {
+      _status = budget!.status.name;
+
+      _editingBudget = budget;
+      _categoryController.text = budget.budgetCategory;
+      _budgetNameController.text = budget.budgetName;
+      _amountController.text = budget.targetAmount.toStringAsFixed(2);
+      _remarkController.text = budget.remark ?? '';
+      _selectedIcon = CategoryUtils.getCategoryIcon(budget.budgetCategory);
+      _selectedColor = CategoryUtils.getCategoryColor(budget.budgetCategory);
+      _startDate = budget.startDate;
+      _endDate = budget.endDate;
+      _selectedDuration = budget.duration;
+
+      _dueDateController.text = DateFormat('MMM dd, yyyy').format(budget.endDate);
+
+      if (budget.duration == DurationCategory.custom) {
+        _customDayController.text = budget.customDays?.toString() ??
+            budget.endDate.difference(budget.startDate).inDays.toString();
+      }
+
+      _isLoading = false;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -225,7 +224,6 @@ void didChangeDependencies() {
             iconEnabledColor: Colors.blueAccent,
             iconDisabledColor: Colors.grey,
             elevation: 8,
-
             items:
                 CategoryUtils.expenseCategories.map((String category) {
                   return DropdownMenuItem<String>(
@@ -419,8 +417,6 @@ void didChangeDependencies() {
             Row(
               children: [
                 _buildStatusIndicator(_status),
-                Spacer(),
-                _buildRepeatIcon(_isRecurring),
               ],
             ),
             const SizedBox(height: 16),
@@ -436,15 +432,19 @@ void didChangeDependencies() {
   }
 
   Widget _buildPreviewHeader() {
-    final categoryName = _categoryController.text;
-    final budgetTitle = _budgetNameController.text;
-
     return Row(
       children: [
         _buildCategoryIcon(),
         const SizedBox(width: 12),
-        _buildCategoryName(categoryName),
-        _buildBudgetTitle(budgetTitle),
+        Flexible(
+          child: Text(
+            _budgetNameController.text.isNotEmpty
+                ? _budgetNameController.text
+                : 'Budget Name',
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
       ],
     );
   }
@@ -507,26 +507,6 @@ void didChangeDependencies() {
     );
   }
 
-  Widget _buildRepeatIcon(bool isRepeat) {
-    return Tooltip(
-      message: isRepeat ? 'Repeat Budget' : 'One-time Budget',
-      child: Container(
-        padding: const EdgeInsets.all(4),
-        decoration: BoxDecoration(
-          color: (isRepeat ? Colors.purple : Colors.grey).withAlpha(
-            (0.2 * 255).round(),
-          ),
-          shape: BoxShape.circle,
-        ),
-        child: Icon(
-          Icons.repeat,
-          size: 20,
-          color: isRepeat ? Colors.purple : Colors.grey,
-        ),
-      ),
-    );
-  }
-
   Widget _buildCategoryIcon() {
     return Container(
       padding: const EdgeInsets.all(8),
@@ -535,32 +515,6 @@ void didChangeDependencies() {
         borderRadius: BorderRadius.circular(8),
       ),
       child: Icon(_selectedIcon, color: _selectedColor),
-    );
-  }
-
-  Widget _buildCategoryName(String name) {
-    return Text(
-      name.isNotEmpty ? name : 'Category Name',
-      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-    );
-  }
-
-  Widget _buildBudgetTitle(String? title) {
-    if (title == null || title.isEmpty) return const SizedBox.shrink();
-
-    return Row(
-      children: [
-        const SizedBox(width: 9),
-        const Text(
-          '-',
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-        ),
-        const SizedBox(width: 9),
-        Text(
-          title,
-          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-        ),
-      ],
     );
   }
 
@@ -636,7 +590,7 @@ void didChangeDependencies() {
           FloatingActionButton(
             onPressed: _saveBudget,
             backgroundColor: Colors.green,
-            child: Icon(Icons.upload_sharp, color: Colors.white),
+            child: Icon(Icons.check, color: Colors.white),
           ),
         ],
       ),
@@ -648,8 +602,9 @@ void didChangeDependencies() {
   //=====================
   String? _budgetTitleValidator(String? value) {
     if (value == null || value.isEmpty) return 'Please enter a budget title';
-    if (value.length > 20)
+    if (value.length > 20) {
       return 'We only accept 20 characters. Please try again';
+    }
     return null;
   }
 
@@ -662,8 +617,9 @@ void didChangeDependencies() {
   String? _amountValidator(String? value) {
     if (value == null || value.isEmpty) return 'Please enter a budget amount';
     final amount = double.tryParse(value);
-    if (amount == null || amount <= 0)
+    if (amount == null || amount <= 0) {
       return 'Please enter a valid positive amount';
+    }
     return null;
   }
 
@@ -778,27 +734,6 @@ void didChangeDependencies() {
     });
   }
 
-  DateTime _calculateNextOccurrence() {
-    switch (_selectedDuration) {
-      case DurationCategory.daily:
-        return _endDate.add(const Duration(days: 1));
-      case DurationCategory.weekly:
-        return _endDate.add(const Duration(days: 7));
-      case DurationCategory.monthly:
-        final nextMonth = _endDate.month + 1;
-        final nextYear = _endDate.year + (nextMonth > 12 ? 1 : 0);
-        final adjustedMonth = nextMonth > 12 ? nextMonth - 12 : nextMonth;
-        return DateTime(
-          nextYear,
-          adjustedMonth,
-          min(_endDate.day, DateUtils.getDaysInMonth(nextYear, adjustedMonth)),
-        );
-      case DurationCategory.custom:
-        final days = int.tryParse(_customDayController.text) ?? 0;
-        return _endDate.add(Duration(days: days));
-    }
-  }
-
   Future<void> _saveBudget() async {
     if (!_formKey.currentState!.validate() || _editingBudget == null) return;
 
@@ -822,7 +757,6 @@ void didChangeDependencies() {
         'endDate': Timestamp.fromDate(_endDate),
         'userId': userId,
         'status': _editingBudget?.status.toString() ?? 'active', //default value
-        'nextOccurrence': _calculateNextOccurrence(),
       };
       await _firestore
           .collection('budgets')
@@ -949,4 +883,4 @@ void didChangeDependencies() {
       }
     }
   }
-} 
+}

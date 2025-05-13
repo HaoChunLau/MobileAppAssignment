@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -68,9 +67,10 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
     // Initial fetch without setState, rely on StreamBuilder
     _updateAllBudgetsCurrentSpent();
 
+    _checkAndUpdateAllBudgets();
+
     Timer.periodic(Duration(hours: 1), (timer) {
-      _checkAndUpdateAllBudgets();
-      _handleRecurringBudgets();
+
     });
   }
 
@@ -120,6 +120,7 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
       final previousStatus = budget.status;
 
       await updateCurrentSpent(budget);
+
       budget.updateStatus(currentDate: _selectedDate);
 
       if (budget.status != previousStatus) {
@@ -131,72 +132,6 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
     }
 
     await batch.commit();
-  }
-
-  Future<void> _handleRecurringBudgets() async {
-    final now = DateTime.now();
-    final budgets = await _firestore
-        .collection('budgets')
-        .where('userId', isEqualTo: _auth.currentUser?.uid)
-        .where('isRecurring', isEqualTo: true)
-        .where('endDate', isLessThanOrEqualTo: Timestamp.fromDate(now))
-        .get();
-
-    final batch = _firestore.batch();
-
-    for (var doc in budgets.docs) {
-      final budget = BudgetModel.fromFirestore(doc);
-
-      final duration = budget.endDate.difference(budget.startDate);
-      final newStartDate = budget.endDate.add(Duration(days: 1));
-      final newEndDate = newStartDate.add(duration);
-
-      final newBudget = {
-        'budgetId': _firestore.collection('budgets').doc().id,
-        'budgetCategory': budget.budgetCategory,
-        'budgetName': budget.budgetName,
-        'targetAmount': budget.targetAmount,
-        'remark': budget.remark,
-        'duration': budget.duration.name, // Use enum name
-        'customDays': budget.customDays,
-        'startDate': Timestamp.fromDate(newStartDate),
-        'endDate': Timestamp.fromDate(newEndDate),
-        'userId': budget.userId,
-        'status': 'active',
-        'isRecurring': budget.isRecurring,
-        'nextOccurrence': Timestamp.fromDate(_calculateNextOccurrence(
-            budget.duration, newEndDate,
-            customDay: budget.customDays)),
-      };
-
-      batch.set(
-          _firestore.collection('budgets').doc(newBudget['budgetId'] as String),
-          newBudget);
-    }
-
-    await batch.commit();
-  }
-
-  DateTime _calculateNextOccurrence(DurationCategory duration, DateTime endDate,
-      {int? customDay}) {
-    switch (duration) {
-      case DurationCategory.daily:
-        return endDate.add(const Duration(days: 1));
-      case DurationCategory.weekly:
-        return endDate.add(const Duration(days: 7));
-      case DurationCategory.monthly:
-        final nextMonth = endDate.month + 1;
-        final nextYear = endDate.year + (nextMonth > 12 ? 1 : 0);
-        final adjustedMonth = nextMonth > 12 ? nextMonth - 12 : nextMonth;
-        return DateTime(
-          nextYear,
-          adjustedMonth,
-          min(endDate.day, DateUtils.getDaysInMonth(nextYear, adjustedMonth)),
-        );
-      case DurationCategory.custom:
-        final days = customDay ?? 0;
-        return endDate.add(Duration(days: days));
-    }
   }
 
   void _handleMenuSelection(String value) {
@@ -1083,13 +1018,7 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                children: [
-                  _buildStatusIndicator(budget.status.name),
-                  Spacer(),
-                  _buildRepeatIcon(budget.isRecurring),
-                ],
-              ),
+              _buildStatusIndicator(budget.status.name),
               const SizedBox(height: 16),
               _buildBudgetHeader(budget),
               const SizedBox(height: 16),
@@ -1167,26 +1096,6 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
     );
   }
 
-  Widget _buildRepeatIcon(bool isRepeat) {
-    final baseColor = isRepeat ? Colors.purple : Colors.grey;
-    return Tooltip(
-      message: isRepeat ? 'Repeat Budget' : 'One-time Budget',
-      child: Container(
-        padding: const EdgeInsets.all(4),
-        decoration: BoxDecoration(
-          color: baseColor
-              .withAlpha((0.2 * 255).round()), // replaces withOpacity(0.2)
-          shape: BoxShape.circle,
-        ),
-        child: Icon(
-          Icons.repeat,
-          size: 20,
-          color: baseColor,
-        ),
-      ),
-    );
-  }
-
   Widget _buildBudgetHeader(BudgetModel budget) {
     return Row(
       children: [
@@ -1196,7 +1105,9 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
           child: _buildBudgetTitle(budget),
         ),
         const Spacer(),
-        _buildEditButton(budget),
+        if (budget.status == Status.active)...[
+          _buildEditButton(budget),
+        ],
       ],
     );
   }
@@ -1237,8 +1148,11 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
     );
   }
 
-  Widget _buildProgressInfo(
-      double spent, double targetAmount, double progress) {
+  Widget _buildProgressInfo(double spent, double targetAmount, double progress) {
+    if (spent > targetAmount){
+      spent = targetAmount;
+    }
+
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
@@ -1247,7 +1161,7 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
           style: TextStyle(color: Colors.grey[600]),
         ),
         Text(
-          '${(progress * 100).toInt()}%',
+          '${((progress * 100).clamp(0, 100)).toInt()}%',
           style: TextStyle(
             fontWeight: FontWeight.bold,
             color: _getProgressTextColor(progress),
@@ -1276,7 +1190,10 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
   }
 
   Widget _buildProgressDetail(double spent, double targetAmount) {
-    final remainAmount = targetAmount - spent;
+    double remainAmount = targetAmount - spent;
+    if (spent > targetAmount){
+      remainAmount = 0;
+    }
 
     return Row(
       children: [
@@ -1583,8 +1500,7 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
     'date_range': false,
   };
 
-  Widget _buildCategoriesFilter(
-      List<String> selected, List<String> all, StateSetter setState) {
+  Widget _buildCategoriesFilter(List<String> selected, List<String> all, StateSetter setState) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1621,8 +1537,7 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
     );
   }
 
-  Widget _buildCategoriesFilterContent(List<String> allCategories,
-      List<String> selectedCategories, StateSetter catSetState) {
+  Widget _buildCategoriesFilterContent(List<String> allCategories, List<String> selectedCategories, StateSetter catSetState) {
     return Wrap(
       spacing: 8,
       runSpacing: 8,
@@ -1862,6 +1777,9 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen>
   }
 }
 
+// =========================
+//      HELPER CLASS
+// =========================
 class SpendingData {
   final double totalAllocated;
   final double totalSpent;

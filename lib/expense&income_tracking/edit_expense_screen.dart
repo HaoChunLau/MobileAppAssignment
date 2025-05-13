@@ -49,16 +49,14 @@ class EditExpenseScreenState extends State<EditExpenseScreen> {
   void _fetchBudgets() async {
     try {
       final user = _auth.currentUser!;
-      final snapshot =
-          await _firestore
-              .collection('budgets')
-              .where('userId', isEqualTo: user.uid)
-              .where('status', whereIn: ['active', 'failed'])
-              .get();
+      final snapshot = await _firestore
+          .collection('budgets')
+          .where('userId', isEqualTo: user.uid)
+          .where('status', whereIn: ['active', 'failed'])
+          .get();
 
       setState(() {
-        _budgets =
-            snapshot.docs.map((doc) => BudgetModel.fromFirestore(doc)).toList();
+        _budgets = snapshot.docs.map((doc) => BudgetModel.fromFirestore(doc)).toList();
       });
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -108,9 +106,9 @@ class EditExpenseScreenState extends State<EditExpenseScreen> {
       } else {
         if (!mounted) return;
         Navigator.pop(context);
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Expense not found')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Expense not found')),
+        );
       }
     } catch (e) {
       if (!mounted) return;
@@ -133,192 +131,231 @@ class EditExpenseScreenState extends State<EditExpenseScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: Text('Edit Expense')),
-      body:
-          _isLoading
-              ? Center(child: CircularProgressIndicator())
-              : SingleChildScrollView(
-                padding: EdgeInsets.all(16.0),
-                child: Form(
-                  key: _formKey,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Title field
-                      TextFormField(
-                        controller: _titleController,
-                        decoration: InputDecoration(
-                          labelText: 'Title',
-                          hintText: 'e.g., Grocery shopping',
-                          border: OutlineInputBorder(),
-                          prefixIcon: Icon(Icons.title),
-                        ),
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'Please enter a title';
-                          }
-                          return null;
-                        },
+      body: _isLoading
+          ? Center(child: CircularProgressIndicator())
+          : SingleChildScrollView(
+              padding: EdgeInsets.all(16.0),
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Title field
+                    TextFormField(
+                      controller: _titleController,
+                      decoration: InputDecoration(
+                        labelText: 'Title',
+                        hintText: 'e.g., Grocery shopping',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.title),
                       ),
-                      SizedBox(height: 16),
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Please enter a title';
+                        }
+                        return null;
+                      },
+                    ),
+                    SizedBox(height: 16),
 
-                      // Amount field
-                      TextFormField(
-                        controller: _amountController,
-                        decoration: InputDecoration(
-                          labelText: 'Amount (RM)',
-                          hintText: 'e.g., 45.50',
-                          border: OutlineInputBorder(),
-                          prefixIcon: Icon(Icons.attach_money),
-                        ),
-                        keyboardType: TextInputType.numberWithOptions(
-                          decimal: true,
-                        ),
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'Please enter an amount';
-                          }
-                          if (double.tryParse(value) == null) {
-                            return 'Please enter a valid number';
-                          }
-                          return null;
-                        },
+                    // Amount field
+                    TextFormField(
+                      controller: _amountController,
+                      decoration: InputDecoration(
+                        labelText: 'Amount (RM)',
+                        hintText: 'e.g., 45.50',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.attach_money),
                       ),
-                      SizedBox(height: 16),
+                      keyboardType: TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Please enter an amount';
+                        }
+                        if (double.tryParse(value) == null) {
+                          return 'Please enter a valid number';
+                        }
+                        return null;
+                      },
+                    ),
+                    SizedBox(height: 16),
 
-                      // Date picker
-                      InkWell(
-                        onTap: _pickDate,
-                        child: InputDecorator(
-                          decoration: InputDecoration(
-                            labelText: 'Date',
-                            border: OutlineInputBorder(),
-                            prefixIcon: Icon(Icons.calendar_today),
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                DateFormat('dd MMM yyyy').format(_selectedDate),
+                    // Date picker
+                    InkWell(
+                      onTap: _pickDate,
+                      child: InputDecorator(
+                        decoration: InputDecoration(
+                          labelText: 'Date',
+                          border: OutlineInputBorder(),
+                          prefixIcon: Icon(Icons.calendar_today),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              DateFormat('dd MMM yyyy').format(_selectedDate),
+                            ),
+                            Icon(Icons.arrow_drop_down),
+                          ],
+                        ),
+                      ),
+                    ),
+                    SizedBox(height: 16),
+
+                    // Category dropdown
+                    InputDecorator(
+                      decoration: InputDecoration(
+                        labelText: 'Category',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.category),
+                      ),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<String>(
+                          value: _selectedCategory,
+                          isExpanded: true,
+                          items: _categories.map((String category) {
+                            return DropdownMenuItem<String>(
+                              value: category,
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    CategoryUtils.getCategoryIcon(category),
+                                    color: CategoryUtils.getCategoryColor(
+                                        category),
+                                    size: 20,
+                                  ),
+                                  SizedBox(width: 8),
+                                  Text(category),
+                                ],
                               ),
-                              Icon(Icons.arrow_drop_down),
-                            ],
-                          ),
+                            );
+                          }).toList(),
+                          onChanged: (String? newValue) {
+                            if (newValue != null && mounted) {
+                              setState(() {
+                                _selectedCategory = newValue;
+                                // Reset budget selection if category changes
+                                _selectedBudgetId = null;
+                              });
+                            }
+                          },
                         ),
                       ),
-                      SizedBox(height: 16),
+                    ),
+                    SizedBox(height: 16),
 
-                      // Category dropdown
-                      InputDecorator(
-                        decoration: InputDecoration(
-                          labelText: 'Category',
-                          border: OutlineInputBorder(),
-                          prefixIcon: Icon(Icons.category),
-                        ),
-                        child: DropdownButtonHideUnderline(
-                          child: DropdownButton<String>(
-                            value: _selectedCategory,
-                            isExpanded: true,
-                            items:
-                                _categories.map((String category) {
-                                  return DropdownMenuItem<String>(
-                                    value: category,
-                                    child: Row(
-                                      children: [
-                                        Icon(
-                                          CategoryUtils.getCategoryIcon(
-                                            category,
-                                          ),
-                                          color: CategoryUtils.getCategoryColor(
-                                            category,
-                                          ),
-                                          size: 20,
-                                        ),
-                                        SizedBox(width: 8),
-                                        Text(category),
-                                      ],
+                    // Budget dropdown (filtered by category)
+                    InputDecorator(
+                      decoration: InputDecoration(
+                        labelText: 'Budget (Optional)',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.account_balance_wallet),
+                      ),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<String?>(
+                          value: _selectedBudgetId,
+                          isExpanded: true,
+                          items: [
+                            DropdownMenuItem<String?>(
+                              value: null,
+                              child: Text('No Budget'),
+                            ),
+                            ..._budgets
+                                .where((budget) =>
+                                    budget.budgetCategory == _selectedCategory)
+                                .map((BudgetModel budget) {
+                              return DropdownMenuItem<String?>(
+                                value: budget.budgetId,
+                                child: Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        '${budget.budgetName} (${budget.budgetCategory})',
+                                      ),
                                     ),
-                                  );
-                                }).toList(),
-                            onChanged: (String? newValue) {
-                              if (newValue != null && mounted) {
-                                setState(() {
-                                  _selectedCategory = newValue;
-                                });
-                              }
-                            },
-                          ),
-                        ),
-                      ),
-                      SizedBox(height: 16),
-
-                      // Budget dropdown
-                      InputDecorator(
-                        decoration: InputDecoration(
-                          labelText: 'Budget (Optional)',
-                          border: OutlineInputBorder(),
-                          prefixIcon: Icon(Icons.account_balance_wallet),
-                        ),
-                        child: DropdownButtonHideUnderline(
-                          child: DropdownButton<String?>(
-                            value: _selectedBudgetId,
-                            isExpanded: true,
-                            items: [
-                              DropdownMenuItem<String?>(
-                                value: null,
-                                child: Text('No Budget'),
-                              ),
-                              ..._budgets.map((BudgetModel budget) {
-                                return DropdownMenuItem<String?>(
-                                  value: budget.budgetId,
-                                  child: Text(
-                                    '${budget.budgetName} (${budget.budgetCategory})',
+                                    if (budget.status == 'failed') ...[
+                                      SizedBox(width: 8),
+                                      Icon(Icons.warning,
+                                          color: Colors.red, size: 16),
+                                    ],
+                                  ],
+                                ),
+                              );
+                            }),
+                          ],
+                          onChanged: (String? newValue) async {
+                            if (newValue != null) {
+                              final selectedBudget = _budgets.firstWhere(
+                                  (budget) => budget.budgetId == newValue);
+                              if (selectedBudget.status == 'failed') {
+                                final confirm = await showDialog<bool>(
+                                  context: context,
+                                  builder: (context) => AlertDialog(
+                                    title: Text('Failed Budget Selected'),
+                                    content: Text(
+                                      'The budget "${selectedBudget.budgetName}" has already exceeded its target. Do you want to assign this expense to it?',
+                                    ),
+                                    actions: [
+                                      TextButton(
+                                        onPressed: () =>
+                                            Navigator.pop(context, false),
+                                        child: Text('Cancel'),
+                                      ),
+                                      TextButton(
+                                        onPressed: () =>
+                                            Navigator.pop(context, true),
+                                        child: Text('Proceed'),
+                                      ),
+                                    ],
                                   ),
                                 );
-                              }),
-                            ],
-                            onChanged: (String? newValue) {
-                              if (mounted) {
-                                setState(() {
-                                  _selectedBudgetId = newValue;
-                                });
+                                if (confirm != true) return;
                               }
-                            },
-                          ),
+                            }
+                            if (mounted) {
+                              setState(() {
+                                _selectedBudgetId = newValue;
+                              });
+                            }
+                          },
                         ),
                       ),
-                      SizedBox(height: 16),
+                    ),
+                    SizedBox(height: 16),
 
-                      // Description field
-                      TextFormField(
-                        controller: _descriptionController,
-                        decoration: InputDecoration(
-                          labelText: 'Description (Optional)',
-                          hintText: 'Add notes about this expense',
-                          border: OutlineInputBorder(),
-                          prefixIcon: Icon(Icons.description),
-                        ),
-                        maxLines: 3,
+                    // Description field
+                    TextFormField(
+                      controller: _descriptionController,
+                      decoration: InputDecoration(
+                        labelText: 'Description (Optional)',
+                        hintText: 'Add notes about this expense',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.description),
                       ),
-                      SizedBox(height: 24),
+                      maxLines: 3,
+                    ),
+                    SizedBox(height: 24),
 
-                      // Submit button
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton(
-                          onPressed: _updateExpense,
-                          style: ElevatedButton.styleFrom(
-                            padding: EdgeInsets.symmetric(vertical: 16),
-                          ),
-                          child: Text(
-                            'Update Expense',
-                            style: TextStyle(fontSize: 16),
-                          ),
+                    // Submit button
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: _updateExpense,
+                        style: ElevatedButton.styleFrom(
+                          padding: EdgeInsets.symmetric(vertical: 16),
+                        ),
+                        child: Text(
+                          'Update Expense',
+                          style: TextStyle(fontSize: 16),
                         ),
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ),
+            ),
     );
   }
 
@@ -341,6 +378,22 @@ class EditExpenseScreenState extends State<EditExpenseScreen> {
 
   void _updateExpense() async {
     if (_formKey.currentState!.validate()) {
+      // Validate budget category match
+      if (_selectedBudgetId != null) {
+        final selectedBudget = _budgets
+            .firstWhere((budget) => budget.budgetId == _selectedBudgetId);
+        if (selectedBudget.budgetCategory != _selectedCategory) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Expense category must match budget category (${selectedBudget.budgetCategory})',
+              ),
+            ),
+          );
+          return;
+        }
+      }
+
       try {
         setState(() {
           _isLoading = true;
@@ -354,10 +407,9 @@ class EditExpenseScreenState extends State<EditExpenseScreen> {
           amount: double.parse(_amountController.text),
           date: _selectedDate,
           category: _selectedCategory,
-          notes:
-              _descriptionController.text.isEmpty
-                  ? null
-                  : _descriptionController.text,
+          notes: _descriptionController.text.isEmpty
+              ? null
+              : _descriptionController.text,
           userId: user.uid,
           isExpense: true,
           budgetId: _selectedBudgetId,
@@ -373,9 +425,9 @@ class EditExpenseScreenState extends State<EditExpenseScreen> {
 
         if (!mounted) return;
 
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Expense updated successfully')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Expense updated successfully')),
+        );
 
         Navigator.pop(context);
       } catch (e) {
@@ -402,21 +454,15 @@ class EditExpenseScreenState extends State<EditExpenseScreen> {
 
     final budget = BudgetModel.fromFirestore(budgetDoc);
 
-    final transactions =
-        await _firestore
-            .collection('transactions')
-            .where('userId', isEqualTo: _auth.currentUser?.uid)
-            .where('budgetId', isEqualTo: budgetId)
-            .where('isExpense', isEqualTo: true)
-            .where(
-              'date',
-              isGreaterThanOrEqualTo: Timestamp.fromDate(budget.startDate),
-            )
-            .where(
-              'date',
-              isLessThanOrEqualTo: Timestamp.fromDate(budget.endDate),
-            )
-            .get();
+    final transactions = await _firestore
+        .collection('transactions')
+        .where('userId', isEqualTo: _auth.currentUser?.uid)
+        .where('budgetId', isEqualTo: budgetId)
+        .where('isExpense', isEqualTo: true)
+        .where('date',
+            isGreaterThanOrEqualTo: Timestamp.fromDate(budget.startDate))
+        .where('date', isLessThanOrEqualTo: Timestamp.fromDate(budget.endDate))
+        .get();
 
     double currentSpent = transactions.docs.fold(0.0, (total, doc) {
       final amount = (doc.data()['amount'] as num).toDouble();

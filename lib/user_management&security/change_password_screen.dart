@@ -10,10 +10,10 @@ class ChangePasswordScreen extends StatefulWidget {
 
 class ChangePasswordScreenState extends State<ChangePasswordScreen> {
   final TextEditingController _currentPasswordController =
-      TextEditingController();
+  TextEditingController();
   final TextEditingController _newPasswordController = TextEditingController();
   final TextEditingController _confirmPasswordController =
-      TextEditingController();
+  TextEditingController();
 
   bool _isCurrentPasswordVisible = false;
   bool _isNewPasswordVisible = false;
@@ -23,7 +23,18 @@ class ChangePasswordScreenState extends State<ChangePasswordScreen> {
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
   @override
+  void initState() {
+    super.initState();
+    // Add listener to newPasswordController to update UI on text change
+    _newPasswordController.addListener(() {
+      setState(() {});
+    });
+  }
+
+  @override
   void dispose() {
+    // Remove the listener to prevent memory leaks
+    _newPasswordController.removeListener(() {});
     _currentPasswordController.dispose();
     _newPasswordController.dispose();
     _confirmPasswordController.dispose();
@@ -232,21 +243,21 @@ class ChangePasswordScreenState extends State<ChangePasswordScreen> {
     return _isLoading
         ? Center(child: CircularProgressIndicator())
         : ElevatedButton(
-            onPressed: _handlePasswordChange,
-            style: ElevatedButton.styleFrom(
-              minimumSize: Size(double.infinity, 50),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-            child: Text(
-              'Update Password',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          );
+      onPressed: _handlePasswordChange,
+      style: ElevatedButton.styleFrom(
+        minimumSize: Size(double.infinity, 50),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+      ),
+      child: Text(
+        'Update Password',
+        style: TextStyle(
+          fontSize: 16,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+    );
   }
 
   Future<void> _handlePasswordChange() async {

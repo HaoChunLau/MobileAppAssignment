@@ -1,24 +1,42 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-enum DurationCategory { daily, weekly, monthly, custom; @override String toString() => name; }
-enum Status { active, completed, failed, stopped, deleted; @override String toString() => name; }
+enum DurationCategory {
+  daily,
+  weekly,
+  monthly,
+  custom;
+
+  @override
+  String toString() => name;
+}
+
+enum Status {
+  active,
+  completed,
+  failed,
+  stopped,
+  deleted;
+
+  @override
+  String toString() => name;
+}
 
 class BudgetModel {
   String? budgetId;
   String budgetCategory;
   String budgetName;
-  double targetAmount;    //user set
-  double currentSpent;    //from expenses
-  String? remark;         //can be null
-  DurationCategory duration;       //enum
-  int? customDays;        //days if custom
-  int? durationOverBudget;//counter for over budget days 看user坚持多久
-  Status status;          //enum
-  bool isRecurring;       //true = repeat, false otherwise
-  DateTime? overDate;     //appear only user exceed the date
-  DateTime? stoppedDate;     //appear only user stop the budget
-  DateTime startDate;     //default is today, user can set (we calc if duration & endDate set)
-  DateTime endDate;       //we calc when duration & startDate set
+  double targetAmount; //user set
+  double currentSpent; //from expenses
+  String? remark; //can be null
+  DurationCategory duration; //enum
+  int? customDays; //days if custom
+  int? durationOverBudget; //counter for over budget days 看user坚持多久
+  Status status; //enum
+  DateTime? overDate; //appear only user exceed the date
+  DateTime? stoppedDate; //appear only user stop the budget
+  DateTime
+      startDate; //default is today, user can set (we calc if duration & endDate set)
+  DateTime endDate; //we calc when duration & startDate set
   String userId;
 
   // Calculation properties
@@ -39,13 +57,12 @@ class BudgetModel {
     this.customDays,
     this.durationOverBudget,
     required this.status,
-    required this.isRecurring,
     this.overDate,
     this.stoppedDate,
     required this.startDate,
     required this.endDate,
     required this.userId,
-  }) : currentSpent = currentSpent ?? 0.0;  // Default to 0 if not provided
+  }) : currentSpent = currentSpent ?? 0.0; // Default to 0 if not provided
 
   // Convert model to Map for storing in Firestore
   Map<String, dynamic> toMap() {
@@ -58,13 +75,9 @@ class BudgetModel {
       'customDays': customDays,
       'durationOverBudget': durationOverBudget,
       'status': status.name,
-      'isRecurring': isRecurring,
-      'overDate': overDate != null
-          ? Timestamp.fromDate(overDate!)
-          : null,
-      'stoppedDate': stoppedDate != null
-          ? Timestamp.fromDate(stoppedDate!)
-          : null,
+      'overDate': overDate != null ? Timestamp.fromDate(overDate!) : null,
+      'stoppedDate':
+          stoppedDate != null ? Timestamp.fromDate(stoppedDate!) : null,
       'startDate': Timestamp.fromDate(startDate),
       'endDate': Timestamp.fromDate(endDate),
       'userId': userId,
@@ -74,6 +87,9 @@ class BudgetModel {
   // Create model from Firestore document
   factory BudgetModel.fromFirestore(DocumentSnapshot doc) {
     Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+    final startDate = (data['startDate'] as Timestamp).toDate();
+    final endDate = (data['endDate'] as Timestamp).toDate();
+
     return BudgetModel(
       budgetId: doc.id,
       budgetCategory: data['budgetCategory'] as String? ?? '',
@@ -84,29 +100,30 @@ class BudgetModel {
       status: _parseStatus(data['status'] as String? ?? 'active'),
       customDays: _parseCustomDays(data['customDays']),
       durationOverBudget: data['durationOverBudget'] ?? 0,
-      isRecurring: data['isRecurring'] as bool? ?? false,
       overDate: data['overDate'] != null
           ? (data['overDate'] as Timestamp).toDate()
           : null,
       stoppedDate: data['stoppedDate'] != null
           ? (data['stoppedDate'] as Timestamp).toDate()
           : null,
-      startDate: (data['startDate'] as Timestamp).toDate(),
-      endDate: (data['endDate'] as Timestamp).toDate(),
+      startDate: DateTime(startDate.year, startDate.month,
+          startDate.day), // Normalize to start of day
+      endDate: DateTime(endDate.year, endDate.month, endDate.day, 23, 59,
+          59), // Normalize to end of day
       userId: data['userId'] ?? '',
     );
   }
 
   static DurationCategory _parseDuration(String value) {
     return DurationCategory.values.firstWhere(
-          (e) => e.name == value.toLowerCase(),
+      (e) => e.name == value.toLowerCase(),
       orElse: () => DurationCategory.weekly, // Default fallback
     );
   }
 
   static Status _parseStatus(String value) {
     return Status.values.firstWhere(
-          (e) => e.name == value.toLowerCase(),
+      (e) => e.name == value.toLowerCase(),
       orElse: () => Status.active, // Default fallback
     );
   }
@@ -139,23 +156,32 @@ class BudgetModel {
   }
 
   // Update Status
-  void updateStatus({DateTime? currentDate, double? spent}) {
+  void updateStatus({DateTime? currentDate, double? spent}) async {
     final now = currentDate ?? DateTime.now();
 
     // If already in a terminal state, don't change
     if (status != Status.active) return;
 
-    if (spent != null){
+    if (spent != null) {
       // Check for failed conditions
+      currentSpent = spent;
       if (currentSpent >= targetAmount) {
         status = Status.failed;
-        overDate ??= now; // Set overDate if not already set
+        overDate = now;
       }
       // Check for COMPLETED status (endDate passed & budget not exceeded)
       else if (now.isAfter(endDate)) {
         status = Status.completed;
       }
     }
+
+    await FirebaseFirestore.instance
+        .collection('budgets')
+        .doc(budgetId)
+        .update({
+      'status': status.name,
+      'overDate': Timestamp.fromDate(overDate!),
+    });
   }
 
   Future<void> updateCurrentSpent(FirebaseFirestore firestore) async {
@@ -175,4 +201,4 @@ class BudgetModel {
 
     updateStatus();
   }
-}
+} 

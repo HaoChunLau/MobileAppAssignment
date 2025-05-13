@@ -508,6 +508,10 @@ class HomeContentState extends State<HomeContent> {
 
   Widget _buildBudgetItem(String category, double progress, Color color,
       {required double totalSpent, required double totalBudget}) {
+    if(totalSpent > totalBudget){
+      totalSpent = totalBudget;
+    }
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Column(

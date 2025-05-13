@@ -16,7 +16,7 @@ class BudgetAddScreen extends StatefulWidget {
 
 class _BudgetAddScreenState extends State<BudgetAddScreen> {
   //Controllers
-  final _formKey = GlobalKey<FormState>();    //for validation
+  final _formKey = GlobalKey<FormState>(); //for validation
   final TextEditingController _categoryController = TextEditingController();
   final TextEditingController _budgetNameController = TextEditingController();
   final TextEditingController _dueDateController = TextEditingController();
@@ -32,10 +32,10 @@ class _BudgetAddScreenState extends State<BudgetAddScreen> {
   // Initialize these with null or empty values
   late IconData _selectedIcon;
   late Color _selectedColor;
-  DateTime _endDate = DateTime.now().add(Duration(days: 7)); // Default to weekly
+  DateTime _endDate =
+      DateTime.now().add(Duration(days: 7)); // Default to weekly
   final DateTime _startDate = DateTime.now(); // Default to current date
   DurationCategory _selectedDuration = DurationCategory.weekly;
-  bool _isRecurring = false;
 
   @override
   void initState() {
@@ -45,8 +45,8 @@ class _BudgetAddScreenState extends State<BudgetAddScreen> {
   }
 
   void _initializeDefaultValues() {
-    final defaultCategory = CategoryUtils.allCategories.isNotEmpty
-        ? CategoryUtils.allCategories[0]
+    final defaultCategory = CategoryUtils.expenseCategories.isNotEmpty
+        ? CategoryUtils.expenseCategories[0]
         : "Food";
 
     _categoryController.text = defaultCategory;
@@ -140,27 +140,25 @@ class _BudgetAddScreenState extends State<BudgetAddScreen> {
     final daysDifference = _endDate.difference(_startDate).inDays;
 
     setState(() {
-      if (daysDifference == 0) { // Same day
+      if (daysDifference == 0) {
+        // Same day
         _selectedDuration = DurationCategory.daily;
         _endDate = _startDate.add(Duration(days: 1)); // Force to next day
-      }
-      else if (daysDifference == 1) {
+      } else if (daysDifference == 1) {
         _selectedDuration = DurationCategory.daily;
-      }
-      else if (daysDifference == 7) {
+      } else if (daysDifference == 7) {
         _selectedDuration = DurationCategory.weekly;
-      }
-      else if (daysDifference >= 28 && daysDifference <= 31) {
+      } else if (daysDifference >= 28 && daysDifference <= 31) {
         // Check if it's approximately a month
-        final nextMonth = DateTime(_startDate.year, _startDate.month + 1, _startDate.day);
+        final nextMonth =
+            DateTime(_startDate.year, _startDate.month + 1, _startDate.day);
         if (_endDate.day == nextMonth.day) {
           _selectedDuration = DurationCategory.monthly;
         } else {
           _selectedDuration = DurationCategory.custom;
           _customDayController.text = daysDifference.toString();
         }
-      }
-      else {
+      } else {
         _selectedDuration = DurationCategory.custom;
         _customDayController.text = daysDifference.toString();
       }
@@ -202,12 +200,12 @@ class _BudgetAddScreenState extends State<BudgetAddScreen> {
   Future<void> _saveBudget() async {
     if (_formKey.currentState!.validate()) {
       try {
-        // Check for duplicate budget first
         final isDuplicate = await _isDuplicateBudget();
         if (isDuplicate) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('A budget with this name already exists for the selected time period'),
+              content: Text(
+                  'A budget with this name already exists for the selected time period'),
               backgroundColor: Colors.orange,
             ),
           );
@@ -217,24 +215,29 @@ class _BudgetAddScreenState extends State<BudgetAddScreen> {
         final userId = _auth.currentUser?.uid;
         if (userId == null) return;
 
+        // Normalize startDate to beginning of the day
+        final normalizedStartDate =
+            DateTime(_startDate.year, _startDate.month, _startDate.day);
+        // Normalize endDate to end of the day
+        final normalizedEndDate =
+            DateTime(_endDate.year, _endDate.month, _endDate.day, 23, 59, 59);
+
         final budgetData = {
-          'budgetId':  _firestore.collection('budgets').doc().id,
+          'budgetId': _firestore.collection('budgets').doc().id,
           'budgetCategory': _categoryController.text,
           'budgetName': _budgetNameController.text,
           'targetAmount': double.parse(_amountController.text),
           'remark': _remarkController.text,
           'duration': _durationController.text,
-          'customDay': _selectedDuration == DurationCategory.custom
-        ? int.tryParse(_customDayController.text)
-            : null,
-          'startDate': Timestamp.fromDate(_startDate),
-          'endDate': Timestamp.fromDate(_endDate),
+          'customDays': _selectedDuration == DurationCategory.custom
+              ? int.tryParse(_customDayController.text)
+              : null,
+          'startDate': Timestamp.fromDate(normalizedStartDate),
+          'endDate': Timestamp.fromDate(normalizedEndDate),
           'userId': userId,
-          'status': 'active', //default value
-          'isRecurring': _isRecurring,
+          'status': 'active',
           'nextOccurrence': _calculateNextOccurrence(),
         };
-
 
         await _firestore.collection('budgets').add(budgetData);
         ScaffoldMessenger.of(context).showSnackBar(
@@ -243,7 +246,6 @@ class _BudgetAddScreenState extends State<BudgetAddScreen> {
             backgroundColor: Colors.green,
           ),
         );
-
 
         Navigator.pop(context);
       } catch (e) {
@@ -259,7 +261,8 @@ class _BudgetAddScreenState extends State<BudgetAddScreen> {
 
   String? _budgetTitleValidator(String? value) {
     if (value == null || value.isEmpty) return 'Please enter a budget title';
-    if (value.length > 20) return 'We only accept 20 characters. Please try again';
+    if (value.length > 20)
+      return 'We only accept 20 characters. Please try again';
     return null;
   }
 
@@ -278,7 +281,8 @@ class _BudgetAddScreenState extends State<BudgetAddScreen> {
   String? _amountValidator(String? value) {
     if (value == null || value.isEmpty) return 'Please enter a budget amount';
     final amount = double.tryParse(value);
-    if (amount == null || amount <= 0) return 'Please enter a valid positive amount';
+    if (amount == null || amount <= 0)
+      return 'Please enter a valid positive amount';
     return null;
   }
 
@@ -320,7 +324,7 @@ class _BudgetAddScreenState extends State<BudgetAddScreen> {
     );
   }
 
-  Widget _buildBody(){
+  Widget _buildBody() {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16.0),
       child: Form(
@@ -340,8 +344,6 @@ class _BudgetAddScreenState extends State<BudgetAddScreen> {
             _buildDurationField(),
             const SizedBox(height: 20),
             _buildRemarkField(),
-            const SizedBox(height: 20),
-            _buildRepeatSwitch(),
             const SizedBox(height: 32),
             _buildPreview(),
             const SizedBox(height: 32),
@@ -366,9 +368,12 @@ class _BudgetAddScreenState extends State<BudgetAddScreen> {
         ),
         child: DropdownButtonHideUnderline(
           child: DropdownButton<String>(
-            value: CategoryUtils.allCategories.contains(_categoryController.text)
+            value: CategoryUtils.expenseCategories
+                    .contains(_categoryController.text)
                 ? _categoryController.text
-                : (CategoryUtils.allCategories.isNotEmpty ? CategoryUtils.allCategories[0] : null),
+                : (CategoryUtils.expenseCategories.isNotEmpty
+                    ? CategoryUtils.expenseCategories[0]
+                    : null),
             isExpanded: true,
             borderRadius: BorderRadius.circular(15.0),
             icon: Icon(Icons.arrow_drop_down),
@@ -376,7 +381,7 @@ class _BudgetAddScreenState extends State<BudgetAddScreen> {
             iconEnabledColor: Colors.blueAccent,
             iconDisabledColor: Colors.grey,
             elevation: 8,
-            items: CategoryUtils.allCategories.map((String category) {
+            items: CategoryUtils.expenseCategories.map((String category) {
               return DropdownMenuItem<String>(
                 value: category,
                 child: Row(
@@ -407,7 +412,7 @@ class _BudgetAddScreenState extends State<BudgetAddScreen> {
     );
   }
 
-  Widget _buildBudgetNameField(){
+  Widget _buildBudgetNameField() {
     return TextFormField(
       controller: _budgetNameController,
       decoration: const InputDecoration(
@@ -428,7 +433,7 @@ class _BudgetAddScreenState extends State<BudgetAddScreen> {
     );
   }
 
-  Widget _buildDueDateField(){
+  Widget _buildDueDateField() {
     return GestureDetector(
       onTap: _selectDate, // Trigger date picker on any tap
       child: AbsorbPointer(
@@ -440,7 +445,8 @@ class _BudgetAddScreenState extends State<BudgetAddScreen> {
             hintText: 'Select a date',
             border: const OutlineInputBorder(),
             prefixIcon: const Icon(Icons.calendar_today), // Optional prefix
-            suffixIcon: const Icon(Icons.arrow_drop_down), // Optional dropdown hint
+            suffixIcon:
+                const Icon(Icons.arrow_drop_down), // Optional dropdown hint
           ),
           validator: _dueDateValidator,
         ),
@@ -473,7 +479,7 @@ class _BudgetAddScreenState extends State<BudgetAddScreen> {
     );
   }
 
-  Widget _buildDurationField(){
+  Widget _buildDurationField() {
     return Column(
       children: [
         DropdownButtonHideUnderline(
@@ -516,7 +522,7 @@ class _BudgetAddScreenState extends State<BudgetAddScreen> {
     );
   }
 
-  Widget _buildCustomDaysField(){
+  Widget _buildCustomDaysField() {
     return Padding(
       padding: const EdgeInsets.only(top: 10),
       child: TextFormField(
@@ -540,29 +546,7 @@ class _BudgetAddScreenState extends State<BudgetAddScreen> {
     );
   }
 
-  Widget _buildRepeatSwitch(){
-    return SwitchListTile(
-      contentPadding: EdgeInsets.zero, // Remove default padding
-      title: const Text(
-        'Repeat',
-        style: TextStyle(fontSize: 16),
-      ),
-      subtitle: _isRecurring
-          ? const Text('This budget will repeat automatically')
-          : null,
-      value: _isRecurring,
-      onChanged: (bool value) {
-        setState(() {
-          _isRecurring = value;
-        });
-      },
-      secondary: const Icon(Icons.repeat),
-      activeColor: Colors.purple[200], // Your theme color
-      inactiveTrackColor: Colors.grey[300],
-    );
-  }
-
-  Widget _buildRemarkField(){
+  Widget _buildRemarkField() {
     return TextFormField(
       controller: _remarkController,
       decoration: const InputDecoration(
@@ -589,13 +573,7 @@ class _BudgetAddScreenState extends State<BudgetAddScreen> {
               'Preview',
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
-            Row(
-              children: [
-                _buildStatusIndicator('active'),
-                Spacer(),
-                _buildRepeatIcon(_isRecurring),
-              ],
-            ),
+            _buildStatusIndicator('active'),
             const SizedBox(height: 16),
             _buildPreviewHeader(),
             const SizedBox(height: 16),
@@ -614,7 +592,9 @@ class _BudgetAddScreenState extends State<BudgetAddScreen> {
         _buildCategoryIcon(),
         const SizedBox(width: 12),
         Text(
-          _categoryController.text.isNotEmpty ? _categoryController.text : 'Category Name',
+          _categoryController.text.isNotEmpty
+              ? _categoryController.text
+              : 'Category Name',
           style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
         ),
         const SizedBox(width: 9),
@@ -623,11 +603,11 @@ class _BudgetAddScreenState extends State<BudgetAddScreen> {
             '-',
             style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
           ),
-          const SizedBox(width: 9),
-          Text(
-            _budgetNameController.text,
-            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-          ),
+        const SizedBox(width: 9),
+        Text(
+          _budgetNameController.text,
+          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+        ),
       ],
     );
   }
@@ -656,13 +636,11 @@ class _BudgetAddScreenState extends State<BudgetAddScreen> {
               'RM 0.00 of RM ${amount.toStringAsFixed(2)}',
               style: TextStyle(color: Colors.grey[600]),
             ),
-            Text(
-              '0%',
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                color: _getProgressColor(0),
-              )
-            ),
+            Text('0%',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: _getProgressColor(0),
+                )),
           ],
         ),
         const SizedBox(height: 8),
@@ -690,8 +668,10 @@ class _BudgetAddScreenState extends State<BudgetAddScreen> {
 
   Widget _buildBudgetDeadlineProgress() {
     final now = DateTime.now();
-    final startDateAtMidnight = DateTime(_startDate.year, _startDate.month, _startDate.day);
-    final endDateAtMidnight = DateTime(_endDate.year, _endDate.month, _endDate.day);
+    final startDateAtMidnight =
+        DateTime(_startDate.year, _startDate.month, _startDate.day);
+    final endDateAtMidnight =
+        DateTime(_endDate.year, _endDate.month, _endDate.day);
 
     // Ensure at least 1 day remains if deadline is today or future
     final remainDays = endDateAtMidnight.difference(now).inDays.clamp(0, 365);
@@ -805,26 +785,6 @@ class _BudgetAddScreenState extends State<BudgetAddScreen> {
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildRepeatIcon(bool isRepeat){
-    return Tooltip(
-      message: isRepeat ? 'Repeat Budget' : 'One-time Budget',
-      child: Container(
-        padding: const EdgeInsets.all(4),
-        decoration: BoxDecoration(
-          color: isRepeat
-              ? Colors.purple.withOpacity(0.2)
-              : Colors.grey.withOpacity(0.2),
-          shape: BoxShape.circle,
-        ),
-        child: Icon(
-          Icons.repeat,
-          size: 20,
-          color: isRepeat ? Colors.purple : Colors.grey,
-        ),
       ),
     );
   }

@@ -938,19 +938,6 @@ class ProfileManagementScreenState extends State<ProfileManagementScreen> {
                 trailing: _isEditing ? Icon(Icons.chevron_right) : null,
                 onTap: _isEditing ? () => _showCurrencyPicker() : null,
               ),
-              ListTile(
-                leading: Icon(Icons.notifications),
-                title: Text('Notification Settings'),
-                trailing: Icon(Icons.chevron_right),
-                onTap: () {
-                  // Navigate to notification settings
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                        content:
-                            Text('Notification settings not implemented yet')),
-                  );
-                },
-              ),
             ],
           ),
         ),

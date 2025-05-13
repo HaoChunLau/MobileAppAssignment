@@ -63,8 +63,8 @@ void didChangeDependencies() {
 
   void _initializeDefaults() {
     final defaultCategory =
-        CategoryUtils.allCategories.isNotEmpty
-            ? CategoryUtils.allCategories[0]
+        CategoryUtils.expenseCategories.isNotEmpty
+            ? CategoryUtils.expenseCategories[0]
             : "Food";
     _categoryController.text = defaultCategory;
     _selectedIcon = CategoryUtils.getCategoryIcon(defaultCategory);
@@ -114,7 +114,6 @@ void didChangeDependencies() {
     _startDate = budget.startDate;
     _endDate = budget.endDate;
     _selectedDuration = budget.duration;
-    _isRecurring = budget.isRecurring;
 
     _dueDateController.text = DateFormat('MMM dd, yyyy').format(budget.endDate);
 
@@ -191,10 +190,9 @@ void didChangeDependencies() {
             _buildDurationField(),
             const SizedBox(height: 20),
             _buildRemarkField(),
-            const SizedBox(height: 20),
-            _buildRepeatSwitch(),
             const SizedBox(height: 32),
             _buildPreview(),
+            const SizedBox(height: 60),
           ],
         ),
       ),
@@ -215,10 +213,10 @@ void didChangeDependencies() {
         child: DropdownButtonHideUnderline(
           child: DropdownButton<String>(
             value:
-                CategoryUtils.allCategories.contains(_categoryController.text)
+                CategoryUtils.expenseCategories.contains(_categoryController.text)
                     ? _categoryController.text
-                    : (CategoryUtils.allCategories.isNotEmpty
-                        ? CategoryUtils.allCategories[0]
+                    : (CategoryUtils.expenseCategories.isNotEmpty
+                        ? CategoryUtils.expenseCategories[0]
                         : null),
             isExpanded: true,
             borderRadius: BorderRadius.circular(15.0),
@@ -229,7 +227,7 @@ void didChangeDependencies() {
             elevation: 8,
 
             items:
-                CategoryUtils.allCategories.map((String category) {
+                CategoryUtils.expenseCategories.map((String category) {
                   return DropdownMenuItem<String>(
                     value: category,
                     child: Row(
@@ -389,26 +387,6 @@ void didChangeDependencies() {
           }
         },
       ),
-    );
-  }
-
-  Widget _buildRepeatSwitch() {
-    return SwitchListTile(
-      contentPadding: EdgeInsets.zero, // Remove default padding
-      title: const Text('Repeat', style: TextStyle(fontSize: 16)),
-      subtitle:
-          _isRecurring
-              ? const Text('This budget will repeat automatically')
-              : null,
-      value: _isRecurring,
-      onChanged: (bool value) {
-        setState(() {
-          _isRecurring = value;
-        });
-      },
-      secondary: const Icon(Icons.repeat),
-      activeColor: Colors.purple[200], // Your theme color
-      inactiveTrackColor: Colors.grey[300],
     );
   }
 
@@ -971,4 +949,4 @@ void didChangeDependencies() {
       }
     }
   }
-}
+} 

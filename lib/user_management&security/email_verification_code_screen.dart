@@ -76,7 +76,7 @@ class _EmailVerificationInstructionsScreenState
         // Navigate to home screen after a short delay
         Future.delayed(const Duration(seconds: 2), () {
           if (mounted) {
-            Navigator.pushReplacementNamed(context, '/home');
+            Navigator.pushReplacementNamed(context, '/login');
           }
         });
       }
@@ -196,7 +196,7 @@ class _EmailVerificationInstructionsScreenState
       _isEmailVerified ? Icons.check_circle : Icons.email,
       size: 80,
       color: _isEmailVerified
-          ? Colors.greenAccent
+          ? Colors.green
           : isDarkMode
           ? Colors.white
           : Theme.of(context).primaryColor,
@@ -216,13 +216,18 @@ class _EmailVerificationInstructionsScreenState
   }
 
   Widget _buildMessageText() {
+    final bool isDarkMode = Theme.of(context).brightness == Brightness.dark;
     return Text(
       _isEmailVerified
           ? 'Your email has been verified successfully. Redirecting to home screen...'
           : 'We sent a verification link to ${widget.email}. Please check your inbox or spam folder and click the link to verify your email.',
       style: TextStyle(
         fontSize: 16,
-        color: Colors.grey[500],
+        color: _isEmailVerified
+            ? Colors.green
+            : isDarkMode
+            ? Colors.grey[500]
+            : Theme.of(context).primaryColor,
       ),
       textAlign: TextAlign.center,
     );

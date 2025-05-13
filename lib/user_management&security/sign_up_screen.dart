@@ -26,6 +26,15 @@ class SignUpScreenState extends State<SignUpScreen> {
   bool _agreeToTerms = false;
   bool _isLoading = false; // Added loading state
 
+  bool _isPasswordValid(String password) {
+    final specialCharRegex = RegExp(r'[!@#$%^&*=\-+?\\|<>,.~`]');
+    final uppercaseRegex = RegExp(r'[A-Z]');
+
+    return password.length >= 8 &&
+        specialCharRegex.hasMatch(password) &&
+        uppercaseRegex.hasMatch(password);
+  }
+
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
@@ -58,16 +67,6 @@ class SignUpScreenState extends State<SignUpScreen> {
     setState(() => _isLoading = true);
 
     try {
-      // Check if email is already registered
-      final signInMethods = await _auth.fetchSignInMethodsForEmail(_emailController.text.trim());
-      if (signInMethods.isNotEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('This email is already registered. Please use a different email or log in.')),
-        );
-        setState(() => _isLoading = false);
-        return;
-      }
-
       // Create user with email and password directly
       final UserCredential userCredential = await _auth.createUserWithEmailAndPassword(
         email: _emailController.text.trim(),
@@ -100,9 +99,15 @@ class SignUpScreenState extends State<SignUpScreen> {
       );
     } on FirebaseAuthException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Signup failed: ${e.message}')),
-      );
+      if (e.code == 'email-already-in-use') {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('This email is already registered. Please use a different email or log in.')),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Signup failed: ${e.message}')),
+        );
+      }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -158,10 +163,13 @@ class SignUpScreenState extends State<SignUpScreen> {
       return false;
     }
 
-    if (_passwordController.text.length < 6) {
-      _showError('Password must be at least 6 characters');
+    if (!_isPasswordValid(_passwordController.text)) {
+      _showError(
+        'Password must be at least 8 characters, include one uppercase letter, and one special character (!@#\$%^&*=-+?\\|<>,.~`)',
+      );
       return false;
     }
+
 
     return true;
   }
@@ -355,6 +363,7 @@ class SignUpScreenState extends State<SignUpScreen> {
                     color: Theme.of(context).brightness == Brightness.dark
                         ? Colors.purple
                         : Theme.of(context).primaryColor,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
               ],

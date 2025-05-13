@@ -102,7 +102,6 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
       _startDate = budget.startDate;
       _endDate = budget.endDate;
       _selectedDuration = budget.duration;
-      _isRecurring = budget.isRecurring;
       _status = budget.status.name;
 
       dueDate = DateFormat('MMM dd, yyyy').format(budget.endDate);
@@ -190,8 +189,7 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
       // 2. Update budget status in local state
       setState(() {
         _status = Status.stopped.name;
-        _stoppedDate:
-        DateTime.now(); // Mark when it was stopped
+        _stoppedDate: DateTime.now(); // Mark when it was stopped
       });
 
       // 3. Persist to database
@@ -350,7 +348,6 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
         currentSpent: 0,
         duration: oldBudget.duration,
         status: Status.active,
-        isRecurring: oldBudget.isRecurring,
         startDate: DateTime.now(),
         endDate: _calculateEndDate(DateTime.now(), oldBudget.duration),
         userId: _auth.currentUser!.uid,
@@ -1382,6 +1379,10 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
   }
 
   Widget _buildActionButton() {
+    if (_budget!.status != Status.active){
+      return SizedBox();
+    }
+
     return Padding(
       padding: const EdgeInsets.only(left: 30),
       child: Row(

@@ -43,17 +43,14 @@ class AddExpenseScreenState extends State<AddExpenseScreen> {
     super.dispose();
   }
 
-  // Fetch active budgets from Firestore
+  // Fetch active and failed budgets from Firestore
   void _fetchBudgets() async {
     try {
       final user = _auth.currentUser!;
       final snapshot = await _firestore
           .collection('budgets')
           .where('userId', isEqualTo: user.uid)
-          .where('status', whereIn: [
-        'active',
-        'failed'
-      ]) // Include active and failed budgets
+          .where('status', whereIn: ['active', 'failed'])
           .get();
 
       if (mounted) {
@@ -183,6 +180,7 @@ class AddExpenseScreenState extends State<AddExpenseScreen> {
                             if (newValue != null) {
                               setState(() {
                                 _selectedCategory = newValue;
+                                _selectedBudgetId = null; // Reset budget selection
                               });
                             }
                           },
@@ -191,7 +189,7 @@ class AddExpenseScreenState extends State<AddExpenseScreen> {
                     ),
                     SizedBox(height: 16),
 
-                    // Budget dropdown
+                    // Budget dropdown (filtered by category with failed budget indicator)
                     InputDecorator(
                       decoration: InputDecoration(
                         labelText: 'Budget (Optional)',
@@ -207,16 +205,58 @@ class AddExpenseScreenState extends State<AddExpenseScreen> {
                               value: null,
                               child: Text('No Budget'),
                             ),
-                            ..._budgets.map((BudgetModel budget) {
+                            ..._budgets
+                                .where((budget) =>
+                                    budget.budgetCategory == _selectedCategory)
+                                .map((BudgetModel budget) {
                               return DropdownMenuItem<String?>(
                                 value: budget.budgetId,
-                                child: Text(
-                                  '${budget.budgetName} (${budget.budgetCategory})',
+                                child: Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        '${budget.budgetName} (${budget.budgetCategory})',
+                                      ),
+                                    ),
+                                    if (budget.status == 'failed') ...[
+                                      SizedBox(width: 8),
+                                      Icon(Icons.warning,
+                                          color: Colors.red, size: 16),
+                                    ],
+                                  ],
                                 ),
                               );
                             }),
                           ],
-                          onChanged: (String? newValue) {
+                          onChanged: (String? newValue) async {
+                            if (newValue != null) {
+                              final selectedBudget = _budgets.firstWhere(
+                                  (budget) => budget.budgetId == newValue);
+                              if (selectedBudget.status == 'failed') {
+                                final confirm = await showDialog<bool>(
+                                  context: context,
+                                  builder: (context) => AlertDialog(
+                                    title: Text('Failed Budget Selected'),
+                                    content: Text(
+                                      'The budget "${selectedBudget.budgetName}" has already exceeded its target. Do you want to assign this expense to it?',
+                                    ),
+                                    actions: [
+                                      TextButton(
+                                        onPressed: () =>
+                                            Navigator.pop(context, false),
+                                        child: Text('Cancel'),
+                                      ),
+                                      TextButton(
+                                        onPressed: () =>
+                                            Navigator.pop(context, true),
+                                        child: Text('Proceed'),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                                if (confirm != true) return;
+                              }
+                            }
                             setState(() {
                               _selectedBudgetId = newValue;
                             });
@@ -277,6 +317,22 @@ class AddExpenseScreenState extends State<AddExpenseScreen> {
 
   void _submitForm() async {
     if (_formKey.currentState!.validate()) {
+      // Validate budget category match
+      if (_selectedBudgetId != null) {
+        final selectedBudget = _budgets
+            .firstWhere((budget) => budget.budgetId == _selectedBudgetId);
+        if (selectedBudget.budgetCategory != _selectedCategory) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Expense category must match budget category (${selectedBudget.budgetCategory})',
+              ),
+            ),
+          );
+          return;
+        }
+      }
+
       try {
         setState(() {
           _isLoading = true;
@@ -304,22 +360,16 @@ class AddExpenseScreenState extends State<AddExpenseScreen> {
 
         if (!mounted) return;
 
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Expense added successfully')),
-          );
-        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Expense added successfully')),
+        );
 
-        if (mounted) {
-          Navigator.pop(context);
-        }
+        Navigator.pop(context);
       } catch (e) {
         if (!mounted) return;
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error adding expense: ${e.toString()}')),
-          );
-        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error adding expense: ${e.toString()}')),
+        );
       } finally {
         if (mounted) {
           setState(() => _isLoading = false);

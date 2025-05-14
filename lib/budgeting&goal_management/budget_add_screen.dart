@@ -482,6 +482,7 @@ class _BudgetAddScreenState extends State<BudgetAddScreen> {
               if (newValue != null) {
                 setState(() {
                   _selectedDuration = newValue;
+                  _durationController.text = newValue.name;
                   if (newValue != DurationCategory.custom) {
                     _calculateEndDate();
                     _updateDueDateDisplay();

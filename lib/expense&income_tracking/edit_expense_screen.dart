@@ -42,67 +42,109 @@ class EditExpenseScreenState extends State<EditExpenseScreen> {
     _descriptionController = TextEditingController();
     _selectedDate = DateTime.now();
     _selectedCategory = 'Food';
-    _fetchBudgets(); // Fetch budgets when screen loads
+    _loadData(); // Load budgets and expense data
+  }
+
+  // Load budgets and expense data sequentially
+  void _loadData() async {
+    try {
+      await _fetchBudgets(); // Fetch budgets first
+      await _loadExpenseData(); // Then load expense data
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error loading data: ${e.toString()}')),
+      );
+      Navigator.pop(context);
+    }
   }
 
   // Fetch active and failed budgets from Firestore
-  void _fetchBudgets() async {
+  Future<void> _fetchBudgets() async {
     try {
       final user = _auth.currentUser!;
       final snapshot = await _firestore
           .collection('budgets')
           .where('userId', isEqualTo: user.uid)
-          .where('status', whereIn: ['active', 'failed'])
-          .get();
+          .where('status', whereIn: ['active', 'failed']).get();
 
-      setState(() {
-        _budgets = snapshot.docs.map((doc) => BudgetModel.fromFirestore(doc)).toList();
-      });
+      if (mounted) {
+        setState(() {
+          _budgets = snapshot.docs
+              .map((doc) => BudgetModel.fromFirestore(doc))
+              .toList();
+        });
+      }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error fetching budgets: ${e.toString()}')),
-      );
+      throw Exception('Error fetching budgets: $e');
     }
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-
     final arguments =
         ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
-    if (arguments != null && arguments.containsKey('id')) {
-      _expenseId = arguments['id'] as String;
-      if (!_dataLoaded) {
-        _loadExpenseData();
-      }
-    } else {
+    if (arguments == null || !arguments.containsKey('id')) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error: No expense ID provided')),
         );
       });
+    } else {
+      _expenseId = arguments['id'] as String;
     }
   }
 
-  void _loadExpenseData() async {
+  Future<void> _loadExpenseData() async {
     try {
       final doc =
           await _firestore.collection('transactions').doc(_expenseId).get();
       if (doc.exists) {
         final transaction = TransactionModel.fromFirestore(doc);
 
-        setState(() {
-          _titleController.text = transaction.title;
-          _amountController.text = transaction.amount.toString();
-          _selectedDate = transaction.date;
-          _selectedCategory = transaction.category;
-          _descriptionController.text = transaction.notes ?? '';
-          _selectedBudgetId = transaction.budgetId; // Load budgetId
-          _isLoading = false;
-          _dataLoaded = true;
-        });
+        // Validate budgetId
+        String? validBudgetId = transaction.budgetId;
+        if (validBudgetId != null) {
+          final selectedBudget = _budgets.firstWhere(
+            (budget) => budget.budgetId == validBudgetId,
+            orElse: () => BudgetModel(
+              budgetId: '',
+              budgetName: '',
+              targetAmount: 0.0,
+              currentSpent: 0.0,
+              budgetCategory: '',
+              duration: DurationCategory.weekly, // Default duration
+              startDate: DateTime.now(),
+              endDate: DateTime.now(),
+              userId: '',
+              status: Status.active,
+            ),
+          );
+          // Check if budget exists and matches category and date range
+          if (selectedBudget.budgetId == '' ||
+              selectedBudget.budgetCategory != transaction.category ||
+              !transaction.date.isAfter(selectedBudget.startDate
+                  .subtract(const Duration(seconds: 1))) ||
+              !transaction.date.isBefore(
+                  selectedBudget.endDate.add(const Duration(seconds: 1)))) {
+            validBudgetId = null; // Reset to null if invalid
+          }
+        }
+
+        if (mounted) {
+          setState(() {
+            _titleController.text = transaction.title;
+            _amountController.text = transaction.amount.toString();
+            _selectedDate = transaction.date;
+            _selectedCategory = transaction.category;
+            _descriptionController.text = transaction.notes ?? '';
+            _selectedBudgetId = validBudgetId;
+            _isLoading = false;
+            _dataLoaded = true;
+          });
+        }
       } else {
         if (!mounted) return;
         Navigator.pop(context);
@@ -111,11 +153,7 @@ class EditExpenseScreenState extends State<EditExpenseScreen> {
         );
       }
     } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error loading expense: ${e.toString()}')),
-      );
-      Navigator.pop(context);
+      throw Exception('Error loading expense: $e');
     }
   }
 
@@ -130,11 +168,11 @@ class EditExpenseScreenState extends State<EditExpenseScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('Edit Expense')),
+      appBar: AppBar(title: const Text('Edit Expense')),
       body: _isLoading
-          ? Center(child: CircularProgressIndicator())
+          ? const Center(child: CircularProgressIndicator())
           : SingleChildScrollView(
-              padding: EdgeInsets.all(16.0),
+              padding: const EdgeInsets.all(16.0),
               child: Form(
                 key: _formKey,
                 child: Column(
@@ -143,7 +181,7 @@ class EditExpenseScreenState extends State<EditExpenseScreen> {
                     // Title field
                     TextFormField(
                       controller: _titleController,
-                      decoration: InputDecoration(
+                      decoration: const InputDecoration(
                         labelText: 'Title',
                         hintText: 'e.g., Grocery shopping',
                         border: OutlineInputBorder(),
@@ -156,20 +194,19 @@ class EditExpenseScreenState extends State<EditExpenseScreen> {
                         return null;
                       },
                     ),
-                    SizedBox(height: 16),
+                    const SizedBox(height: 16),
 
                     // Amount field
                     TextFormField(
                       controller: _amountController,
-                      decoration: InputDecoration(
+                      decoration: const InputDecoration(
                         labelText: 'Amount (RM)',
                         hintText: 'e.g., 45.50',
                         border: OutlineInputBorder(),
                         prefixIcon: Icon(Icons.attach_money),
                       ),
-                      keyboardType: TextInputType.numberWithOptions(
-                        decimal: true,
-                      ),
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
                       validator: (value) {
                         if (value == null || value.isEmpty) {
                           return 'Please enter an amount';
@@ -180,13 +217,13 @@ class EditExpenseScreenState extends State<EditExpenseScreen> {
                         return null;
                       },
                     ),
-                    SizedBox(height: 16),
+                    const SizedBox(height: 16),
 
                     // Date picker
                     InkWell(
                       onTap: _pickDate,
                       child: InputDecorator(
-                        decoration: InputDecoration(
+                        decoration: const InputDecoration(
                           labelText: 'Date',
                           border: OutlineInputBorder(),
                           prefixIcon: Icon(Icons.calendar_today),
@@ -197,16 +234,16 @@ class EditExpenseScreenState extends State<EditExpenseScreen> {
                             Text(
                               DateFormat('dd MMM yyyy').format(_selectedDate),
                             ),
-                            Icon(Icons.arrow_drop_down),
+                            const Icon(Icons.arrow_drop_down),
                           ],
                         ),
                       ),
                     ),
-                    SizedBox(height: 16),
+                    const SizedBox(height: 16),
 
                     // Category dropdown
                     InputDecorator(
-                      decoration: InputDecoration(
+                      decoration: const InputDecoration(
                         labelText: 'Category',
                         border: OutlineInputBorder(),
                         prefixIcon: Icon(Icons.category),
@@ -226,7 +263,7 @@ class EditExpenseScreenState extends State<EditExpenseScreen> {
                                         category),
                                     size: 20,
                                   ),
-                                  SizedBox(width: 8),
+                                  const SizedBox(width: 8),
                                   Text(category),
                                 ],
                               ),
@@ -236,18 +273,19 @@ class EditExpenseScreenState extends State<EditExpenseScreen> {
                             if (newValue != null && mounted) {
                               setState(() {
                                 _selectedCategory = newValue;
-                                _selectedBudgetId = null; // Reset budget selection
+                                _selectedBudgetId =
+                                    null; // Reset budget selection
                               });
                             }
                           },
                         ),
                       ),
                     ),
-                    SizedBox(height: 16),
+                    const SizedBox(height: 16),
 
                     // Budget dropdown (filtered by category and date range)
                     InputDecorator(
-                      decoration: InputDecoration(
+                      decoration: const InputDecoration(
                         labelText: 'Budget (Optional)',
                         border: OutlineInputBorder(),
                         prefixIcon: Icon(Icons.account_balance_wallet),
@@ -257,17 +295,19 @@ class EditExpenseScreenState extends State<EditExpenseScreen> {
                           value: _selectedBudgetId,
                           isExpanded: true,
                           items: [
-                            DropdownMenuItem<String?>(
+                            const DropdownMenuItem<String?>(
                               value: null,
                               child: Text('No Budget'),
                             ),
                             ..._budgets
                                 .where((budget) =>
-                                    budget.budgetCategory == _selectedCategory &&
+                                    budget.budgetCategory ==
+                                        _selectedCategory &&
                                     _selectedDate.isAfter(budget.startDate
-                                        .subtract(Duration(seconds: 1))) &&
-                                    _selectedDate.isBefore(
-                                        budget.endDate.add(Duration(seconds: 1))))
+                                        .subtract(
+                                            const Duration(seconds: 1))) &&
+                                    _selectedDate.isBefore(budget.endDate
+                                        .add(const Duration(seconds: 1))))
                                 .map((BudgetModel budget) {
                               return DropdownMenuItem<String?>(
                                 value: budget.budgetId,
@@ -278,9 +318,9 @@ class EditExpenseScreenState extends State<EditExpenseScreen> {
                                         '${budget.budgetName} (${budget.budgetCategory})',
                                       ),
                                     ),
-                                    if (budget.status == 'failed') ...[
-                                      SizedBox(width: 8),
-                                      Icon(Icons.warning,
+                                    if (budget.status == Status.failed) ...[
+                                      const SizedBox(width: 8),
+                                      const Icon(Icons.warning,
                                           color: Colors.red, size: 16),
                                     ],
                                   ],
@@ -292,11 +332,11 @@ class EditExpenseScreenState extends State<EditExpenseScreen> {
                             if (newValue != null) {
                               final selectedBudget = _budgets.firstWhere(
                                   (budget) => budget.budgetId == newValue);
-                              if (selectedBudget.status == 'failed') {
+                              if (selectedBudget.status == Status.failed) {
                                 final confirm = await showDialog<bool>(
                                   context: context,
                                   builder: (context) => AlertDialog(
-                                    title: Text('Failed Budget Selected'),
+                                    title: const Text('Failed Budget Selected'),
                                     content: Text(
                                       'The budget "${selectedBudget.budgetName}" has already exceeded its target. Do you want to assign this expense to it?',
                                     ),
@@ -304,12 +344,12 @@ class EditExpenseScreenState extends State<EditExpenseScreen> {
                                       TextButton(
                                         onPressed: () =>
                                             Navigator.pop(context, false),
-                                        child: Text('Cancel'),
+                                        child: const Text('Cancel'),
                                       ),
                                       TextButton(
                                         onPressed: () =>
                                             Navigator.pop(context, true),
-                                        child: Text('Proceed'),
+                                        child: const Text('Proceed'),
                                       ),
                                     ],
                                   ),
@@ -326,12 +366,12 @@ class EditExpenseScreenState extends State<EditExpenseScreen> {
                         ),
                       ),
                     ),
-                    SizedBox(height: 16),
+                    const SizedBox(height: 16),
 
                     // Description field
                     TextFormField(
                       controller: _descriptionController,
-                      decoration: InputDecoration(
+                      decoration: const InputDecoration(
                         labelText: 'Description (Optional)',
                         hintText: 'Add notes about this expense',
                         border: OutlineInputBorder(),
@@ -339,7 +379,7 @@ class EditExpenseScreenState extends State<EditExpenseScreen> {
                       ),
                       maxLines: 3,
                     ),
-                    SizedBox(height: 24),
+                    const SizedBox(height: 24),
 
                     // Submit button
                     SizedBox(
@@ -347,9 +387,9 @@ class EditExpenseScreenState extends State<EditExpenseScreen> {
                       child: ElevatedButton(
                         onPressed: _updateExpense,
                         style: ElevatedButton.styleFrom(
-                          padding: EdgeInsets.symmetric(vertical: 16),
+                          padding: const EdgeInsets.symmetric(vertical: 16),
                         ),
-                        child: Text(
+                        child: const Text(
                           'Update Expense',
                           style: TextStyle(fontSize: 16),
                         ),
@@ -388,18 +428,18 @@ class EditExpenseScreenState extends State<EditExpenseScreen> {
             .firstWhere((budget) => budget.budgetId == _selectedBudgetId);
         if (selectedBudget.budgetCategory != _selectedCategory) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
+            const SnackBar(
               content: Text(
-                'Expense category must match budget category (${selectedBudget.budgetCategory})',
+                'Expense category must match budget category',
               ),
             ),
           );
           return;
         }
-        if (!_selectedDate
-                .isAfter(selectedBudget.startDate.subtract(Duration(seconds: 1))) ||
-            !_selectedDate
-                .isBefore(selectedBudget.endDate.add(Duration(seconds: 1)))) {
+        if (!_selectedDate.isAfter(selectedBudget.startDate
+                .subtract(const Duration(seconds: 1))) ||
+            !_selectedDate.isBefore(
+                selectedBudget.endDate.add(const Duration(seconds: 1)))) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(
@@ -443,7 +483,7 @@ class EditExpenseScreenState extends State<EditExpenseScreen> {
         if (!mounted) return;
 
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Expense updated successfully')),
+          const SnackBar(content: Text('Expense updated successfully')),
         );
 
         Navigator.pop(context);

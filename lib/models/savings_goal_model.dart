@@ -123,6 +123,39 @@ class SavingsGoalModel {
         return customDay ?? targetDate.difference(startDate).inDays;
     }
   }
+
+  void updateStatus({DateTime? currentDate}) async {
+    final now = currentDate ?? DateTime.now();
+
+    // If already in a terminal state, don't change
+    if (status != Status.active) return;
+
+    if (currentSaved != 0) {
+      if (currentSaved >= targetAmount) {
+        status = Status.completed;
+        achieveDate = now;
+      }
+      else if (now.isAfter(targetDate)) {
+        status = Status.failed;
+      }
+    }
+    else if (now.isAfter(targetDate)) {
+      status = Status.failed;
+    }
+
+    final updateData = <String, dynamic> {
+      'status': status.name,
+    };
+
+    if (status == Status.completed && achieveDate != null) {
+      updateData['achieveDate'] = Timestamp.fromDate(achieveDate!);
+    }
+
+    await FirebaseFirestore.instance
+        .collection('savings')
+        .doc(savingGoalId)
+        .update(updateData);
+  }
 }
 
 class SavingsContribution {

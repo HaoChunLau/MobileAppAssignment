@@ -868,33 +868,29 @@ class ProfileManagementScreenState extends State<ProfileManagementScreen> {
                         ),
                       ),
                       SizedBox(height: 4),
-                      Row(
-                        children: [
-                          Text(
-                            _emailController.text,
+                      Text(
+                        _emailController.text,
+                        style: TextStyle(
+                          fontSize: 16,
+                        ),
+                      ),
+                      if (_isEmailPendingVerification) ...[
+                        SizedBox(height: 8), // Add spacing between email and label
+                        Container(
+                          padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.orange,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            'Pending Verification',
                             style: TextStyle(
-                              fontSize: 16,
+                              color: Colors.white,
+                              fontSize: 12,
                             ),
                           ),
-                          if (_isEmailPendingVerification) ...[
-                            SizedBox(width: 8),
-                            Container(
-                              padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: Colors.orange,
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Text(
-                                'Pending Verification',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 12,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
+                        ),
+                      ],
                     ],
                   ),
                 ),

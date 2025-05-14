@@ -96,21 +96,21 @@ class ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         _isLoading
             ? const Center(child: CircularProgressIndicator())
             : ElevatedButton(
-                onPressed: _isLoading ? null : _handleResetRequest,
-                style: ElevatedButton.styleFrom(
-                  minimumSize: const Size(double.infinity, 50),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                child: const Text(
-                  'Reset Password',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
+          onPressed: _isLoading ? null : _handleResetRequest,
+          style: ElevatedButton.styleFrom(
+            minimumSize: const Size(double.infinity, 50),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+          child: const Text(
+            'Reset Password',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
         const SizedBox(height: 16),
         Center(
           child: TextButton(
@@ -169,21 +169,21 @@ class ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
           onPressed: _isLoading || _countdownSeconds > 0
               ? null
               : () async {
-                  setState(() {
-                    _startCountdown();
-                  });
-                  await _handleResetRequest();
-                },
+            setState(() {
+              _startCountdown();
+            });
+            await _handleResetRequest();
+          },
           child: _isLoading
               ? const CircularProgressIndicator(strokeWidth: 2)
               : Text(
-                  'Resend Email',
-                  style: TextStyle(
-                    color: _countdownSeconds > 0
-                        ? Colors.grey
-                        : Theme.of(context).primaryColor,
-                  ),
-                ),
+            'Resend Email',
+            style: TextStyle(
+              color: _countdownSeconds > 0
+                  ? Colors.grey
+                  : Theme.of(context).primaryColor,
+            ),
+          ),
         ),
         const SizedBox(height: 24),
         ElevatedButton(
@@ -191,7 +191,7 @@ class ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
             Navigator.pushNamedAndRemoveUntil(
               context,
               '/login',
-              (route) => false,
+                  (route) => false,
             );
           },
           style: ElevatedButton.styleFrom(
@@ -232,10 +232,35 @@ class ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       return;
     }
 
+    // Show confirmation dialog
+    bool? confirmSend = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Send Password Reset Email'),
+        content: Text(
+          'Are you sure you want to send a password reset email to ${_emailController.text.trim()}?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Send'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmSend != true) {
+      return;
+    }
+
     setState(() => _isLoading = true);
 
     try {
-      // Firebase password reset
+      // Attempt to send password reset email
       await _auth.sendPasswordResetEmail(email: _emailController.text.trim());
 
       if (!mounted) return;
@@ -246,6 +271,13 @@ class ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         _isLoading = false;
         _startCountdown();
       });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Password reset email sent. Check your inbox.'),
+          backgroundColor: Colors.green,
+        ),
+      );
     } on FirebaseAuthException catch (e) {
       if (!mounted) return;
 
@@ -257,6 +289,8 @@ class ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         errorMessage = 'No user found with this email address';
       } else if (e.code == 'invalid-email') {
         errorMessage = 'The email address is invalid';
+      } else if (e.code == 'too-many-requests') {
+        errorMessage = 'Too many requests. Please try again later';
       } else {
         errorMessage = 'Error: ${e.message}';
       }

@@ -30,6 +30,8 @@ class _EmailVerificationInstructionsScreenState
   late Timer _timer;
   bool _isEmailVerified = false;
   double _opacity = 0.0; // For fade-in animation
+  bool _isLoading = true; // To show a loading state initially
+  String? _errorMessage;
 
   @override
   void initState() {
@@ -42,13 +44,21 @@ class _EmailVerificationInstructionsScreenState
       });
     });
 
-    // Initial verification check
-    _checkEmailVerified();
+    // Initial verification check with a slight delay to ensure email is sent
+    Future.delayed(const Duration(seconds: 2), () {
+      _checkEmailVerified();
+      setState(() {
+        _isLoading = false; // Stop initial loading after first check
+      });
+    });
 
     // Set up periodic verification checks
     _timer = Timer.periodic(
       const Duration(seconds: 5),
-          (_) => _checkEmailVerified(),
+          (_) {
+        print('Checking email verification...');
+        _checkEmailVerified();
+      },
     );
   }
 
@@ -60,6 +70,14 @@ class _EmailVerificationInstructionsScreenState
 
   Future<void> _checkEmailVerified() async {
     try {
+      // Ensure there's a current user
+      if (_auth.currentUser == null) {
+        print('No current user found');
+        setState(() {
+          _errorMessage = 'No user logged in. Please try again.';
+        });
+        return;
+      }
       await _auth.currentUser?.reload();
       final user = _auth.currentUser;
 
@@ -79,9 +97,15 @@ class _EmailVerificationInstructionsScreenState
             Navigator.pushReplacementNamed(context, '/login');
           }
         });
+      } else {
+        print('Email not verified yet for ${user?.email}');
       }
     } catch (e) {
+      print('Error checking verification: $e');
       if (mounted) {
+        setState(() {
+          _errorMessage = 'Error checking verification: $e';
+        });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Error checking verification: ${e.toString()}'),
@@ -159,8 +183,9 @@ class _EmailVerificationInstructionsScreenState
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      // Status icon or loading indicator
-                      _buildStatusIndicator(),
+                      _isLoading
+                          ? const CircularProgressIndicator()
+                          : _buildStatusIndicator(),
 
                       const SizedBox(height: 24),
 
@@ -168,9 +193,16 @@ class _EmailVerificationInstructionsScreenState
                       _buildTitleText(),
 
                       const SizedBox(height: 16),
-
-                      // Message text
-                      _buildMessageText(),
+                      _errorMessage != null
+                          ? Text(
+                        _errorMessage!,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          color: Colors.red,
+                        ),
+                        textAlign: TextAlign.center,
+                      )
+                          : _buildMessageText(),
 
                       // Conditional cancel button
                       if (!_isEmailVerified) ...[
@@ -241,7 +273,9 @@ class _EmailVerificationInstructionsScreenState
         'Cancel and Return to Login',
         style: TextStyle(
           fontSize: 16,
-          color: isDarkMode ? Colors.deepPurpleAccent : Theme.of(context).primaryColor,
+          color: isDarkMode
+              ? Colors.deepPurpleAccent
+              : Theme.of(context).primaryColor,
           fontWeight: FontWeight.w600,
         ),
       ),

@@ -750,7 +750,7 @@ class _BudgetEditScreenState extends State<BudgetEditScreen> {
         'duration': _selectedDuration.name,
         'remark': _remarkController.text,
         'isRecurring': _isRecurring,
-        'customDay':
+        'customDays':
             _selectedDuration == DurationCategory.custom
                 ? int.tryParse(_customDayController.text)
                 : null,

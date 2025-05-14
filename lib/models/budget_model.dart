@@ -174,6 +174,9 @@ class BudgetModel {
         status = Status.completed;
       }
     }
+    else if (now.isAfter(endDate)) {
+      status = Status.completed;
+    }
 
     await FirebaseFirestore.instance
         .collection('budgets')

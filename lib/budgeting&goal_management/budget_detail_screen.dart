@@ -345,10 +345,17 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
         budgetName: '${oldBudget.budgetName} (New)',
         targetAmount: oldBudget.targetAmount,
         currentSpent: 0,
+        customDays: oldBudget.customDays,
         duration: oldBudget.duration,
         status: Status.active,
         startDate: DateTime.now(),
-        endDate: _calculateEndDate(DateTime.now(), oldBudget.duration),
+        endDate: _calculateEndDate(
+          DateTime.now(),
+          oldBudget.duration,
+          customDays: oldBudget.duration == DurationCategory.custom
+              ? oldBudget.customDays
+              : null,
+        ),
         userId: _auth.currentUser!.uid,
         remark: oldBudget.remark,
       );
@@ -374,7 +381,7 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
   }
 
   // Helper function to calculate end date
-  DateTime _calculateEndDate(DateTime startDate, DurationCategory duration) {
+  DateTime _calculateEndDate(DateTime startDate, DurationCategory duration, {int? customDays}) {
     switch (duration) {
       case DurationCategory.daily:
         return startDate.add(const Duration(days: 1));
@@ -383,7 +390,10 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
       case DurationCategory.monthly:
         return DateTime(startDate.year, startDate.month + 1, startDate.day);
       case DurationCategory.custom:
-        return startDate.add(const Duration(days: 30)); // Default custom period
+        if(customDays != null){
+          return startDate.add(Duration(days: customDays));
+        }
+        throw ArgumentError('customDays cannot be null for custom duration');
     }
   }
 
@@ -439,6 +449,7 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
 
   AppBar _buildAppBar() {
     return AppBar(
+      title: _buildBudgetName(),
       actions: [
         PopupMenuButton<String>(
           icon: Icon(Icons.more_vert),

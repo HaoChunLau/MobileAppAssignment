@@ -70,7 +70,9 @@ class _SavingsProgressScreenState extends State<SavingsProgressScreen> {
               children: [
                 _buildGoalProgressCard(updatedGoal, progress, remainingAmount, daysRemaining, dailyRequired),
                 const SizedBox(height: 24),
-                _buildContributionActions(updatedGoal),
+                if (goal.status == Status.active)...[
+                  _buildContributionActions(updatedGoal),
+                ],
                 const SizedBox(height: 24),
                 StreamBuilder<QuerySnapshot>(
                   stream: _firestore
@@ -351,6 +353,8 @@ class _SavingsProgressScreenState extends State<SavingsProgressScreen> {
   }
 
   Widget _buildContributionHistory(SavingsGoalModel goal, List<SavingsContribution> contributions, Color color) {
+    final bool isGoalCompleted = goal.currentSaved >= goal.targetAmount;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -420,7 +424,9 @@ class _SavingsProgressScreenState extends State<SavingsProgressScreen> {
                       ),
                   ],
                 ),
-                trailing: IconButton(
+                trailing: isGoalCompleted
+                    ? null // Hide delete icon when goal is completed
+                    : IconButton(
                   icon: const Icon(Icons.delete_outline, color: Colors.grey),
                   onPressed: () => _showDeleteContributionDialog(contribution),
                 ),

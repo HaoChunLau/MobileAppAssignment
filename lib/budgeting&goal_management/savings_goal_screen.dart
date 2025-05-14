@@ -179,7 +179,12 @@ class _SavingsGoalScreenState extends State<SavingsGoalScreen> {
         if (docs.isEmpty) return _buildEmptyState();
 
         List<SavingsGoalModel> savingsList = docs
-            .map((doc) => SavingsGoalModel.fromFirestore(doc))
+            .map((doc) {
+              final goal = SavingsGoalModel.fromFirestore(doc);
+              // Update status for each goal when loading
+              goal.updateStatus();
+              return goal;
+            })
             .where((goal) =>
                 _searchTerm.isEmpty ||
                 goal.title.toLowerCase().contains(_searchTerm.toLowerCase()) ||
@@ -365,19 +370,22 @@ class _SavingsGoalScreenState extends State<SavingsGoalScreen> {
                         color: Colors.red[400],
                       ),
                     ),
-                  ElevatedButton(
-                    onPressed: () => _showAddContributionDialog(goal),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: color,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 8),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
+
+                  if(goal.status == Status.active)...[
+                    ElevatedButton(
+                      onPressed: () => _showAddContributionDialog(goal),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: color,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 8),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
                       ),
+                      child: const Text('Add Money'),
                     ),
-                    child: const Text('Add Money'),
-                  ),
+                  ],
                 ],
               ),
             ],

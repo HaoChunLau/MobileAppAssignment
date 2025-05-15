@@ -191,7 +191,7 @@ class BudgetModel {
     final transactions = await firestore
         .collection('transactions')
         .where('userId', isEqualTo: userId)
-        .where('category', isEqualTo: budgetCategory)
+        .where('budgetId', isEqualTo: budgetId)
         .where('isExpense', isEqualTo: true)
         .where('date', isGreaterThanOrEqualTo: Timestamp.fromDate(startDate))
         .where('date', isLessThanOrEqualTo: Timestamp.fromDate(endDate))

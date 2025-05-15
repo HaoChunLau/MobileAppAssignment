@@ -88,20 +88,6 @@ class HomeContentState extends State<HomeContent> {
   DateTime _selectedDate = DateTime.now();
   double totalIncome = 0;
   double totalExpenses = 0;
-  Future<Map<String, dynamic>>? _homeDataFuture; // Store the Future
-
-  @override
-  void initState() {
-    super.initState();
-    _refreshData(); // Initialize the Future
-  }
-
-  // Method to refresh data
-  void _refreshData() {
-    setState(() {
-      _homeDataFuture = _fetchHomeData();
-    });
-  }
 
   Future<void> _selectMonth(BuildContext context) async {
     final DateTime? picked = await showMonthPicker(
@@ -114,9 +100,124 @@ class HomeContentState extends State<HomeContent> {
     if (picked != null && picked != _selectedDate) {
       setState(() {
         _selectedDate = picked;
-        _refreshData(); // Refresh data when month changes
       });
     }
+  }
+
+  Stream<Map<String, dynamic>> _fetchHomeDataStream() {
+    final userId = _auth.currentUser?.uid;
+    if (userId == null) {
+      return Stream.error('No user logged in');
+    }
+
+    final startOfMonth = DateTime(_selectedDate.year, _selectedDate.month, 1);
+    final endOfMonth = DateTime(_selectedDate.year, _selectedDate.month + 1, 0, 23, 59, 59);
+
+    // Stream for transactions
+    final transactionStream = _firestore
+        .collection('transactions')
+        .where('userId', isEqualTo: userId)
+        .where('date', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfMonth))
+        .where('date', isLessThanOrEqualTo: Timestamp.fromDate(endOfMonth))
+        .snapshots();
+
+    // Stream for budgets
+    final budgetStream = _firestore
+        .collection('budgets')
+        .where('userId', isEqualTo: userId)
+        .where('startDate', isLessThanOrEqualTo: Timestamp.fromDate(endOfMonth))
+        .where('endDate', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfMonth))
+        .where('status', isNotEqualTo: 'deleted')
+        .snapshots();
+
+    // Stream for recent transactions
+    final recentTransactionStream = _firestore
+        .collection('transactions')
+        .where('userId', isEqualTo: userId)
+        .where('date', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfMonth))
+        .where('date', isLessThanOrEqualTo: Timestamp.fromDate(endOfMonth))
+        .orderBy('date', descending: true)
+        .limit(5)
+        .snapshots();
+
+    // Combine streams
+    return Stream<Map<String, dynamic>>.multi((controller) async {
+      double totalIncome = 0;
+      double totalExpenses = 0;
+      List<Map<String, dynamic>> recentTransactions = [];
+      List<BudgetModel> budgets = [];
+
+      // Listen to transaction stream
+      final transactionSub = transactionStream.listen((snapshot) {
+        totalIncome = 0;
+        totalExpenses = 0;
+        for (var doc in snapshot.docs) {
+          final data = doc.data();
+          final amount = (data['amount'] as num).toDouble();
+          if (data['isExpense'] as bool) {
+            totalExpenses += amount;
+          } else {
+            totalIncome += amount;
+          }
+        }
+        final balance = totalIncome - totalExpenses;
+
+        controller.add({
+          'balance': balance,
+          'recentTransactions': recentTransactions,
+          'budgets': budgets,
+          'totalIncome': totalIncome,
+          'totalExpenses': totalExpenses,
+        });
+      });
+
+      // Listen to recent transaction stream
+      final recentSub = recentTransactionStream.listen((snapshot) {
+        recentTransactions = snapshot.docs.map((doc) {
+          final data = doc.data();
+          return {
+            'title': data['title'] as String,
+            'date': (data['date'] as Timestamp).toDate(),
+            'amount': (data['amount'] as num).toDouble(),
+            'isExpense': data['isExpense'] as bool,
+            'category': data['category'] as String,
+          };
+        }).toList();
+
+        controller.add({
+          'balance': totalIncome - totalExpenses,
+          'recentTransactions': recentTransactions,
+          'budgets': budgets,
+          'totalIncome': totalIncome,
+          'totalExpenses': totalExpenses,
+        });
+      });
+
+      // Listen to budget stream
+      final budgetSub = budgetStream.listen((snapshot) async {
+        budgets = [];
+        for (var doc in snapshot.docs) {
+          final budget = BudgetModel.fromFirestore(doc);
+          await budget.updateCurrentSpent(_firestore); // Calculate currentSpent
+          budgets.add(budget);
+        }
+
+        controller.add({
+          'balance': totalIncome - totalExpenses,
+          'recentTransactions': recentTransactions,
+          'budgets': budgets,
+          'totalIncome': totalIncome,
+          'totalExpenses': totalExpenses,
+        });
+      });
+
+      // Clean up subscriptions
+      controller.onCancel = () {
+        transactionSub.cancel();
+        recentSub.cancel();
+        budgetSub.cancel();
+      };
+    });
   }
 
   @override
@@ -143,8 +244,8 @@ class HomeContentState extends State<HomeContent> {
             ],
           ),
           const SizedBox(height: 16),
-          FutureBuilder<Map<String, dynamic>>(
-            future: _homeDataFuture, // Use the stored Future
+          StreamBuilder<Map<String, dynamic>>(
+            stream: _fetchHomeDataStream(),
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) {
                 return const Center(child: CircularProgressIndicator());
@@ -155,6 +256,8 @@ class HomeContentState extends State<HomeContent> {
               }
 
               final data = snapshot.data!;
+              totalIncome = data['totalIncome'] as double;
+              totalExpenses = data['totalExpenses'] as double;
               final balance = data['balance'] as double;
               final recentTransactions = data['recentTransactions'] as List<Map<String, dynamic>>;
               final budgets = data['budgets'] as List<BudgetModel>;
@@ -176,79 +279,6 @@ class HomeContentState extends State<HomeContent> {
         ],
       ),
     );
-  }
-
-  Future<Map<String, dynamic>> _fetchHomeData() async {
-    final userId = _auth.currentUser?.uid;
-    if (userId == null) {
-      throw Exception('No user logged in');
-    }
-
-    final startOfMonth = DateTime(_selectedDate.year, _selectedDate.month, 1);
-    final endOfMonth = DateTime(_selectedDate.year, _selectedDate.month + 1, 0, 23, 59, 59);
-
-    // Fetch transactions
-    final transactionSnapshot = await _firestore
-        .collection('transactions')
-        .where('userId', isEqualTo: userId)
-        .where('date', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfMonth))
-        .where('date', isLessThanOrEqualTo: Timestamp.fromDate(endOfMonth))
-        .get();
-
-    totalIncome = 0;
-    totalExpenses = 0;
-    for (var doc in transactionSnapshot.docs) {
-      final data = doc.data();
-      final amount = (data['amount'] as num).toDouble();
-      if (data['isExpense'] as bool) {
-        totalExpenses += amount;
-      } else {
-        totalIncome += amount;
-      }
-    }
-    final balance = totalIncome - totalExpenses;
-
-    final recentSnapshot = await _firestore
-        .collection('transactions')
-        .where('userId', isEqualTo: userId)
-        .where('date', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfMonth))
-        .where('date', isLessThanOrEqualTo: Timestamp.fromDate(endOfMonth))
-        .orderBy('date', descending: true)
-        .limit(5)
-        .get();
-
-    final recentTransactions = recentSnapshot.docs.map((doc) {
-      final data = doc.data();
-      return {
-        'title': data['title'] as String,
-        'date': (data['date'] as Timestamp).toDate(),
-        'amount': (data['amount'] as num).toDouble(),
-        'isExpense': data['isExpense'] as bool,
-        'category': data['category'] as String,
-      };
-    }).toList();
-
-    // Fetch budgets
-    final budgetSnapshot = await _firestore
-        .collection('budgets')
-        .where('userId', isEqualTo: userId)
-        .where('startDate', isLessThanOrEqualTo: Timestamp.fromDate(endOfMonth))
-        .where('endDate', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfMonth))
-        .where('status', isNotEqualTo: 'deleted')
-        .get();
-
-    final budgets = <BudgetModel>[];
-    for (var doc in budgetSnapshot.docs) {
-      final budget = BudgetModel.fromFirestore(doc);
-      await budget.updateCurrentSpent(_firestore); // Calculate currentSpent
-      budgets.add(budget);
-    }
-
-    return {
-      'balance': balance,
-      'recentTransactions': recentTransactions,
-      'budgets': budgets,
-    };
   }
 
   Widget _buildBalanceCard(double balance) {
@@ -367,9 +397,8 @@ class HomeContentState extends State<HomeContent> {
   Widget _buildActionButton(
       BuildContext context, IconData icon, String label, String route, Color color) {
     return InkWell(
-      onTap: () async {
-        await Navigator.pushNamed(context, route);
-        _refreshData(); // Refresh data after returning
+      onTap: () {
+        Navigator.pushNamed(context, route);
       },
       child: Column(
         children: [
@@ -508,7 +537,7 @@ class HomeContentState extends State<HomeContent> {
 
   Widget _buildBudgetItem(String category, double progress, Color color,
       {required double totalSpent, required double totalBudget}) {
-    if(totalSpent > totalBudget){
+    if (totalSpent > totalBudget) {
       totalSpent = totalBudget;
     }
 
@@ -526,9 +555,9 @@ class HomeContentState extends State<HomeContent> {
                 style: TextStyle(
                   fontWeight: FontWeight.bold,
                   color: progress > 0.8
-                      ? Theme.of(context).colorScheme.error // Use theme's error color
+                      ? Theme.of(context).colorScheme.error
                       : Theme.of(context).brightness == Brightness.dark
-                          ? Theme.of(context).colorScheme.onSurface // Light color in dark mode
+                          ? Theme.of(context).colorScheme.onSurface
                           : Colors.black87,
                 ),
               ),
